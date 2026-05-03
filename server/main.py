@@ -2,6 +2,7 @@
 
 import json
 import os
+import traceback
 import uuid
 
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ load_dotenv()
 
 app = FastAPI(title="Roadside Rescue API")
 
-# CORS — allow GitHub Pages origin (update with your actual domain)
+# CORS — allow GitHub Pages origin
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://sennatitcomb.github.io").split(
     ","
 )
@@ -38,7 +39,7 @@ async def health():
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
 
-    # Unique session ID for LangGraph checkpointer (persists state across turns)
+    # Unique session ID for LangGraph checkpointer
     session_id = str(uuid.uuid4())
 
     # Accumulate final transcript segments until utterance ends
@@ -66,33 +67,66 @@ async def websocket_endpoint(ws: WebSocket):
 
         await ws.send_json({"type": "utterance_end", "text": full_text})
 
-        # Invoke LangGraph with the user's utterance
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content=full_text)]},
-            config={"configurable": {"thread_id": session_id}},
+        try:
+            # Invoke LangGraph with the user's utterance
+            result = await graph.ainvoke(
+                {"messages": [HumanMessage(content=full_text)]},
+                config={"configurable": {"thread_id": session_id}},
+            )
+
+            # Extract the last AI response
+            reply = result["messages"][-1].content
+            await ws.send_json({"type": "assistant_text", "text": reply})
+
+            # Stream TTS audio back to client
+            async for audio_chunk in stream_speech(reply):
+                await ws.send_bytes(audio_chunk)
+
+            # Signal audio stream complete
+            await ws.send_json({"type": "audio_end"})
+
+        except Exception as e:
+            print(f"[LangGraph/TTS Error] {e}")
+            traceback.print_exc()
+            await ws.send_json(
+                {
+                    "type": "error",
+                    "message": f"Processing error: {str(e)}",
+                }
+            )
+
+    # Start Deepgram STT
+    stt = None
+    try:
+        stt = DeepgramSTT(
+            on_transcript=on_transcript, on_utterance_end=on_utterance_end
         )
-
-        # Extract the last AI response
-        reply = result["messages"][-1].content
-        await ws.send_json({"type": "assistant_text", "text": reply})
-
-        # Stream TTS audio back to client
-        async for audio_chunk in stream_speech(reply):
-            await ws.send_bytes(audio_chunk)
-
-        # Signal audio stream complete
-        await ws.send_json({"type": "audio_end"})
-
-    stt = DeepgramSTT(on_transcript=on_transcript, on_utterance_end=on_utterance_end)
-    await stt.start()
+        started = await stt.start()
+        if not started:
+            await ws.send_json(
+                {
+                    "type": "error",
+                    "message": "Failed to connect to speech recognition service",
+                }
+            )
+            print("[STT] Deepgram start() returned False")
+    except Exception as e:
+        print(f"[STT Error] Failed to start Deepgram: {e}")
+        traceback.print_exc()
+        await ws.send_json(
+            {
+                "type": "error",
+                "message": f"Speech recognition error: {str(e)}",
+            }
+        )
 
     try:
         while True:
             data = await ws.receive()
 
             if "bytes" in data:
-                # Forward raw audio to Deepgram STT
-                await stt.send(data["bytes"])
+                if stt:
+                    await stt.send(data["bytes"])
 
             elif "text" in data:
                 message = json.loads(data["text"])
@@ -102,4 +136,5 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_json({"type": "pong"})
 
     except WebSocketDisconnect:
-        await stt.finish()
+        if stt:
+            await stt.finish()
