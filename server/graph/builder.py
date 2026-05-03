@@ -17,19 +17,14 @@ from server.graph.state import ConversationState
 
 def build_graph() -> StateGraph:
     """Construct the conversation graph with agent ↔ tools loop."""
+    print("[Graph] Building conversation graph...")
     graph = StateGraph(ConversationState)
 
-    # Nodes
     graph.add_node("agent", agent_node)
     graph.add_node("tools", ToolNode(ALL_TOOLS))
 
-    # Edges
     graph.add_edge(START, "agent")
-
-    # Agent → tools (if tool_calls present) or → END
     graph.add_conditional_edges("agent", tools_condition)
-
-    # After tool execution, loop back to agent
     graph.add_edge("tools", "agent")
 
     return graph
@@ -38,3 +33,4 @@ def build_graph() -> StateGraph:
 # Compile with in-memory checkpointer for session persistence
 memory = MemorySaver()
 graph = build_graph().compile(checkpointer=memory)
+print("[Graph] Graph compiled successfully")

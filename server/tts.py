@@ -11,6 +11,11 @@ DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
 
 _client: AsyncElevenLabs | None = None
 
+_api_key = os.environ.get("ELEVENLABS_API_KEY")
+print(
+    f"[TTS] ELEVENLABS_API_KEY set: {bool(_api_key)}, length: {len(_api_key) if _api_key else 0}"
+)
+
 
 def _get_client() -> AsyncElevenLabs:
     """Lazy-init singleton async ElevenLabs client."""
@@ -27,6 +32,7 @@ async def synthesize_speech(
     output_format: str = DEFAULT_OUTPUT_FORMAT,
 ) -> bytes:
     """Generate full audio bytes from text (non-streaming)."""
+    print(f"[TTS] synthesize_speech: '{text[:60]}...'")
     client = _get_client()
     response = await client.text_to_speech.convert(
         voice_id=voice_id,
@@ -34,7 +40,9 @@ async def synthesize_speech(
         model_id=model_id,
         output_format=output_format,
     )
-    return b"".join([chunk async for chunk in response])
+    audio = b"".join([chunk async for chunk in response])
+    print(f"[TTS] Generated {len(audio)} bytes of audio")
+    return audio
 
 
 async def stream_speech(
@@ -44,13 +52,21 @@ async def stream_speech(
     output_format: str = DEFAULT_OUTPUT_FORMAT,
 ) -> AsyncIterator[bytes]:
     """Yield audio chunks as they arrive from ElevenLabs (streaming)."""
+    print(f"[TTS] stream_speech: '{text[:80]}...'")
     client = _get_client()
-    audio_stream = await client.text_to_speech.convert_as_stream(
-        voice_id=voice_id,
-        text=text,
-        model_id=model_id,
-        output_format=output_format,
-    )
-    async for chunk in audio_stream:
-        if chunk:
-            yield chunk
+    try:
+        audio_stream = await client.text_to_speech.convert_as_stream(
+            voice_id=voice_id,
+            text=text,
+            model_id=model_id,
+            output_format=output_format,
+        )
+        total_bytes = 0
+        async for chunk in audio_stream:
+            if chunk:
+                total_bytes += len(chunk)
+                yield chunk
+        print(f"[TTS] Streamed {total_bytes} bytes total")
+    except Exception as e:
+        print(f"[TTS] Error: {e}")
+        raise
