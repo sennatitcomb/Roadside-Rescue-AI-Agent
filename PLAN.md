@@ -14,7 +14,7 @@
 
 The system is split into two independently hosted services to minimize cost:
 
-- **Frontend** → GitHub Pages (free) — static HTML/CSS/JS voice client
+- **Frontend** → GitHub Pages (free) — static HTML/CSS/JS voice client with interactive map
 - **Backend** → Render free tier (free) — FastAPI + WebSocket server, LangGraph, all API integrations
 
 ```
@@ -25,30 +25,31 @@ The system is split into two independently hosted services to minimize cost:
 │  │ index.html │  │                        └───────────┬───────────┘
 │  │ style.css  │  │                                    │
 │  │ app.js     │  │               ┌────────────────────┼──────────┐
-│  │ speechSyn. │  │               │                    │          │
+│  │ Leaflet.js │  │               │                    │          │
 │  └────────────┘  │         ┌─────▼──────┐    ┌────────▼────────┐ │
 └──────────────────┘         │  Deepgram   │    │   LangGraph     │ │
-   Browser TTS ◄─── text ── │  STT        │    │   + Gemini 2.5  │ │
-   (speechSynthesis)         │  (Nova-2)   │    │   State Machine │ │
-                             └────────────┘    └────────┬────────┘ │
+                             │  STT        │    │   + Gemini 2.5  │ │
+   Browser TTS ◄─── text ── │  (Nova-2)   │    │   State Machine │ │
+   (speechSynthesis)         └────────────┘    └────────┬────────┘ │
                                                         │          │
-                                             ┌──────────┼──────────┤
-                                             │          │          │
-                                       ┌─────▼───┐ ┌───▼────┐ ┌──▼──────────┐
-                                       │verify_  │ │get_    │ │book_        │
-                                       │vehicle  │ │slots   │ │mechanic     │
-                                       └─────────┘ └───┬────┘ └──┬──────────┘
-                                                       │         │
-                                                  ┌────▼─────────▼────┐
-                                                  │   SQLite DB       │
-                                                  │   (slots/bookings)│
-                                                  └───────────────────┘
+   Leaflet Map ◄─── tiles ── OpenStreetMap    ┌──────────┼──────────┤
+                                              │          │          │
+   Status Card ◄── geocode ── Nominatim ┌─────▼───┐ ┌───▼────┐ ┌──▼──────────┐
+                                        │verify_  │ │get_    │ │book_        │
+                                        │vehicle  │ │slots   │ │mechanic     │
+                                        │(NHTSA)  │ │(top 3) │ │             │
+                                        └─────────┘ └───┬────┘ └──┬──────────┘
+                                                        │         │
+                                                   ┌────▼─────────▼────┐
+                                                   │   SQLite DB       │
+                                                   │   (slots/bookings)│
+                                                   └───────────────────┘
 ```
 
 ### Why Split Deployment?
 
 - **API key security** — Keys stay on the backend server, never exposed to the browser
-- **$0 total cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) + Gemini free tier + Browser TTS + Deepgram ($200 free credit) = free for a POC
+- **$0 total cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) + Gemini free tier + Browser TTS + Deepgram ($200 free credit) + Nominatim/OpenStreetMap (free) = free for a POC
 - **Full architecture preserved** — LangGraph state machine, SQLite, and all orchestration logic remain server-side
 - **Interview-ready** — Demonstrates real backend engineering, not just client-side API calls
 
@@ -60,11 +61,36 @@ The system is split into two independently hosted services to minimize cost:
 4. LLM response text is sent back to **Client** over WebSocket as JSON
 5. **Client** speaks the response aloud using the browser's built-in `speechSynthesis` API (Web Speech API)
 
-> **Note:** ElevenLabs TTS is included as an optional server-side upgrade. The free tier blocks cloud server IPs, so the browser's native TTS is used by default for zero-cost deployment.
+### GPS & Location Flow
+
+1. **Page load** → `navigator.geolocation.getCurrentPosition()` captures coordinates
+2. **Leaflet map** initialized with pin at GPS location
+3. **Nominatim reverse geocode** resolves coordinates to street address + zip code
+4. Status card shows **"Confirming..."** (not raw address)
+5. Location sent to server via WebSocket `{"type": "location", ...}` — queued if WS not yet open
+6. Server stores location in `session_state` dict (mutable container for closure access)
+7. **First utterance** → server injects GPS as a `SystemMessage` (not embedded in HumanMessage, so LLM treats it as authoritative)
+8. Agent confirms: *"I see you're near [street], [zip]. Is that right?"*
+9. **User confirms** → agent responds with "Great..." → client detects acknowledgment → status card shows formatted address
+10. **User corrects** → client parses zip from transcript → forward geocodes new address → map pin moves + status updates
+
+### Client-Side Parsing
+
+The client extracts structured data from both user transcripts and agent responses:
+
+| Source | What's Parsed | How |
+|--------|--------------|-----|
+| User transcript | Zip codes (location correction) | `\b(\d{5})\b` + address extraction from both sides of zip |
+| User transcript | Phone numbers | `\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}` → formatted |
+| Agent response | Vehicle (year-first) | `\b(\d{4})\s+(make)\s+(model)` with stop-word filter |
+| Agent response | Vehicle (year-last) | `(make)\s+(model)\s+\(?(\d{4})\)?` with stop-word filter |
+| Agent response | Booking code | `(?:confirmation code\|booking ID)\s+(\w+)` |
+| Agent response | Location confirmation | Acknowledgment words when status is "Confirming..." |
+| Agent response | Location update | Zip code detection (skipped for slot/availability messages) |
 
 ### CORS & WebSocket Configuration
 
-The FastAPI backend must allow cross-origin requests from your GitHub Pages domain:
+The FastAPI backend allows cross-origin requests from the GitHub Pages domain:
 
 ```python
 app.add_middleware(
@@ -90,11 +116,15 @@ const ws = new WebSocket(WS_URL);
 |-----------|-----------|-----|
 | **Transport** | FastAPI + WebSockets | Native async support; backend hosted on Render free tier |
 | **STT** | Deepgram Nova-2 | Industry-leading low-latency streaming STT; excels with background noise (highway traffic) |
-| **LLM** | Google Gemini 2.5 Flash | Free API tier (5 RPM, 20 RPD); strong tool-calling support; zero cost for POC |
-| **TTS** | Browser Web Speech API (`speechSynthesis`) | Zero-cost, no API key, works on all modern browsers. ElevenLabs Turbo v2.5 available as optional paid upgrade |
+| **LLM** | Google Gemini 2.5 Flash | Free API tier; strong tool-calling support; zero cost for POC |
+| **TTS** | Browser Web Speech API (`speechSynthesis`) | Zero-cost, no API key, works on all modern browsers |
+| **Map** | Leaflet.js + OpenStreetMap | Open-source, free, no API key required |
+| **Geocoding** | Nominatim (OpenStreetMap) | Free reverse + forward geocoding, no API key, 1 req/sec policy |
+| **Vehicle API** | NHTSA Vehicle API | Free government API for vehicle make/model validation |
 | **Orchestration** | LangGraph (Python) | Models conversation as a state machine; handles cycles, retries, and error routing cleanly |
 | **Storage** | SQLite | Zero-config, file-based; perfect for POC. Intentionally simple locking (interview bait) |
 | **Eval** | LangSmith | Native LangGraph integration for trace logging and LLM-as-a-judge evaluation |
+| **CI/CD** | GitHub Actions | Auto-deploys `client/` to GitHub Pages on push to `main` |
 
 ---
 
@@ -121,87 +151,112 @@ State: ConversationState
 START
   │
   ▼
-GREETING ──► COLLECT_INFO ◄─── (ambiguous input → re-ask)
-                  │
-                  ▼
-            VERIFY_VEHICLE ◄─── (fail + retry < 3 → retry)
-                  │
-                  ▼
-            FIND_SLOTS
-                  │
-                  ▼
-            CONFIRM_AND_BOOK
-                  │
-                  ▼
-            SUMMARY_AND_END
+AGENT ◄──────────── tools_condition ────► TOOLS
+  │                     (loop)               │
+  │                                          │
+  ▼                                          │
+ END ◄──────────────────────────────────────┘
 ```
+
+The agent node drives the entire conversation. It decides when to call tools and when to respond. The system prompt instructs a multi-step workflow:
+
+1. **Greet** → confirm GPS location with driver
+2. **Collect vehicle** → make, model, year
+3. **Verify vehicle** → `verify_vehicle` tool (NHTSA API)
+4. **Find slots** → `get_available_slots` tool (top 3 results)
+5. **Book** → `book_mechanic` tool
+6. **Confirm** → read back confirmation code and ETA
 
 **Error Routing:**
 - Tool failure + retry < 3 → loop back with "I'm having trouble, give me a moment"
 - Tool failure + retry >= 3 → graceful fallback: "Let me connect you to a human dispatcher"
 - Ambiguous input → politely ask for clarification, stay on current node
-- Connection drop → save state to DB for resumption
 
 ---
 
 ## 5. Tool Definitions (API Integration)
 
 ### `verify_vehicle(make: str, model: str, year: int) → dict`
-- Checks against NHTSA Vehicle API (or mocked dictionary)
+- Validates against NHTSA Vehicle API
 - Returns `{valid: bool, corrected_make: str, corrected_model: str}`
 - Handles edge cases: "2025 Ford Civic" → invalid combo
 
 ### `get_available_slots(zip_code: str) → list[dict]`
 - Queries SQLite `available_slots` table
-- Returns list of `{slot_id, mechanic_name, date, time, zip_code}`
-- Filters to next 24 hours, sorts by soonest
+- Returns list of `{slot_id, mechanic_name, specialty, date, time, zip_code}`
+- **Limited to 3 results** (soonest first) to keep voice responses concise
+- Slot IDs are available to the LLM for booking but hidden from the user
 
 ### `book_mechanic(customer_phone: str, zip_code: str, vehicle: dict, slot_id: str) → dict`
 - Writes booking to SQLite `bookings` table
-- Returns `{booking_id, mechanic_name, eta, confirmation_msg}`
+- Returns `{booking_id, mechanic_name, date, time, confirmation_msg}`
 - **Intentional limitation:** No row-level locking — concurrent bookings can double-book (interview live-coding bait)
 
 ---
 
 ## 6. Client Interface
 
-**Approach:** Single-page web app, mobile-first, hosted on **GitHub Pages** (free). No framework, no bundler.
+**Approach:** Single-page web app, mobile-first, hosted on **GitHub Pages** (free). No framework, no bundler. Deployed via GitHub Actions workflow.
 
 ```
 ┌─────────────────────────────┐
 │      ROADSIDE RESCUE        │
 │                             │
 │     ┌───────────────┐       │
-│     │               │       │
 │     │   🎙️  TAP     │       │
 │     │   TO TALK     │       │
-│     │               │       │
 │     └───────────────┘       │
 │                             │
-│  "Tell me what happened     │
-│   and I'll get help on      │
-│   the way."                 │
+│  ┌─────────────────────┐    │
+│  │   🗺️ Leaflet Map    │    │
+│  │   (GPS pin + tiles) │    │
+│  └─────────────────────┘    │
 │                             │
 │  ┌─────────────────────┐    │
-│  │ 📍 Location: shared │    │
-│  │ 🚗 Vehicle: —       │    │
-│  │ 🔧 Status: Listening│    │
+│  │ Your conversation   │    │
+│  │ will appear here... │    │
+│  └─────────────────────┘    │
+│                             │
+│  ┌─────────────────────┐    │
+│  │ 📍 Location: ...    │    │
+│  │ 🚗 Vehicle: ...     │    │
+│  │ 🔧 Status: ...      │    │
+│  │ 📞 Phone: ...       │    │
+│  │ 🎫 Booking: ...     │    │
 │  └─────────────────────┘    │
 └─────────────────────────────┘
 ```
 
 **Design Principles:**
 - **One giant button** — tap to start, tap to stop. No forms, no typing.
-- **Live transcript** — subtle scrolling text confirming the user is being heard
-- **Status card** — auto-fills as agent extracts info (vehicle, location, booking)
+- **Interactive map** — Leaflet.js with OpenStreetMap tiles, GPS pin, dark theme
+- **Live transcript** — scrolling text confirming the user is being heard
+- **Smart status card** — auto-fills as agent extracts info (location, vehicle, phone, booking)
+- **Location confirmation flow** — "Confirming..." → agent verifies → formatted address
 - **Auto-geolocation** — `navigator.geolocation.getCurrentPosition()` on page load
-- **PWA-ready** — optional `manifest.json` for home-screen install
+- **Reverse geocoding** — Nominatim converts GPS coordinates to street address + zip
 
-**Tech:** Vanilla HTML/CSS/JS, WebSocket API, MediaRecorder API, Web Speech API (`speechSynthesis`).
+**Tech:** Vanilla HTML/CSS/JS, Leaflet.js (CDN), WebSocket API, MediaRecorder API, Web Speech API, Nominatim API.
 
 ---
 
-## 7. Evaluation Methodology
+## 7. Database Coverage
+
+| Zip Code | City | Mechanic | Specialty |
+|----------|------|----------|-----------|
+| 98101 | Seattle, WA (Downtown) | Mike Torres | General Repair |
+| 98101 | Seattle, WA (Downtown) | Sarah Chen | Electrical |
+| 98109 | Seattle, WA (South Lake Union) | David Kim | Battery & Electrical |
+| 98122 | Seattle, WA (Capitol Hill) | Lisa Park | Tires & Brakes |
+| 90210 | Beverly Hills, CA | James Okafor | Engine & Transmission |
+| 90210 | Beverly Hills, CA | Priya Patel | Tires & Brakes |
+| 73301 | Austin, TX | Carlos Rivera | General Repair |
+
+Each mechanic has 4 time slots generated over the next 24 hours from seed time.
+
+---
+
+## 8. Evaluation Methodology
 
 ### LangSmith Tracing
 - Instrument LangGraph with LangSmith callbacks
@@ -216,112 +271,133 @@ Pull transcripts from LangSmith, grade on three criteria:
 | **Tool Execution** | Did it trigger booking API successfully? | `booking_id` returned |
 | **Conversational Resilience** | Handled ambiguous input gracefully? | No crashes; polite clarification given |
 
-### Test Scenarios (5-10 conversations)
+### Test Scenarios
 1. Happy path — clear info, books successfully
 2. Ambiguous input — "my car is the blue one"
 3. Invalid vehicle — "2025 Ford Civic"
 4. No available slots in area
 5. Tool API failure (mocked)
 6. User changes mind mid-conversation
-7. Noisy/fragmented speech
+7. User corrects GPS location
+8. Noisy/fragmented speech
 
 ---
 
-## 8. Execution Plan
+## 9. Execution Plan
 
-### Phase 1: Foundation (Day 1)
-- [ ] Initialize project: `pyproject.toml`, dependencies, directory structure
-- [ ] Create SQLite schema: `mechanics`, `available_slots`, `bookings` tables
-- [ ] Seed database with mock data (5 mechanics, ~20 slots across 3 zip codes)
-- [ ] Implement 3 tool functions with unit tests
+### Phase 1: Foundation ✅
+- [x] Initialize project: `pyproject.toml`, dependencies, directory structure
+- [x] Create SQLite schema: `mechanics`, `available_slots`, `bookings` tables
+- [x] Seed database with mock data (7 mechanics, ~28 slots across 4 zip codes)
+- [x] Implement 3 tool functions with unit tests
 
-### Phase 2: Voice Pipeline (Day 2)
-- [ ] FastAPI WebSocket endpoint — accept/manage audio connections
-- [ ] Add CORS middleware for GitHub Pages origin
-- [ ] Deepgram STT integration — stream audio in, receive transcripts
-- [ ] Browser TTS via `speechSynthesis` API (with ElevenLabs as optional server-side fallback)
-- [ ] Verify end-to-end voice round-trip
+### Phase 2: Voice Pipeline ✅
+- [x] FastAPI WebSocket endpoint — accept/manage audio connections
+- [x] Add CORS middleware for GitHub Pages origin
+- [x] Deepgram STT integration — stream audio in, receive transcripts
+- [x] Browser TTS via `speechSynthesis` API
+- [x] Verify end-to-end voice round-trip
 
-### Phase 3: LangGraph Brain (Day 2-3)
-- [ ] Define `ConversationState` TypedDict
-- [ ] Implement graph nodes: greeting, collect_info, verify_vehicle, find_slots, confirm_book, summarize
-- [ ] Write system prompt (calm, empathetic tone; structured extraction instructions)
-- [ ] Bind 3 tools to Gemini 2.5 Flash via `ChatGoogleGenerativeAI`, wire tool-call handling in graph
-- [ ] Add error routing: retry logic, ambiguity handling, graceful fallbacks
+### Phase 3: LangGraph Brain ✅
+- [x] Define `ConversationState` TypedDict
+- [x] Implement agent node with tool-calling loop
+- [x] Write system prompt (calm, empathetic tone; location-first workflow)
+- [x] Bind 3 tools to Gemini 2.5 Flash via `ChatGoogleGenerativeAI`
+- [x] Add error routing: retry logic, ambiguity handling, graceful fallbacks
 
-### Phase 4: Integration (Day 3)
-- [ ] Wire full loop: client audio → STT → LangGraph → text response → browser TTS
-- [ ] Build static web client (`client/index.html`, `client/style.css`, `client/app.js`)
-- [ ] Configure `app.js` to connect to Render backend via `wss://`
-- [ ] Add geolocation auto-capture
-- [ ] Test latency end-to-end (target: < 2s round-trip)
+### Phase 4: Integration ✅
+- [x] Wire full loop: client audio → STT → LangGraph → text response → browser TTS
+- [x] Build static web client (`client/index.html`, `client/style.css`, `client/app.js`)
+- [x] Configure `app.js` to connect to Render backend via `wss://`
+- [x] Add geolocation auto-capture
 
-### Phase 5: Deployment (Day 3-4)
-- [ ] Deploy backend to Render (free tier) — connect GitHub repo, set env vars
-- [ ] Deploy `client/` folder to GitHub Pages — configure as publishing source
-- [ ] Verify cross-origin WebSocket connectivity
-- [ ] Test full flow from GitHub Pages → Render backend
+### Phase 5: GPS & Interactive Map ✅
+- [x] Add Leaflet.js map with OpenStreetMap tiles (dark theme)
+- [x] Reverse geocode GPS coordinates via Nominatim
+- [x] Location confirmation flow: "Confirming..." → agent verifies → formatted address
+- [x] GPS data sent to server as WebSocket message (with queuing for race conditions)
+- [x] Server injects GPS as SystemMessage on first utterance
+- [x] Forward geocoding for location corrections (map pin + status update)
+- [x] Parse user transcripts for zip code corrections
+- [x] Strip trailing prepositions from address extraction
+- [x] Skip geocoding during slot/availability discussions
+- [x] Use structured Nominatim address fields (not display_name) to avoid business names
 
-### Phase 6: Evaluation (Day 4)
+### Phase 6: Status Card Intelligence ✅
+- [x] Vehicle detection: year-first and year-last formats with stop-word filtering
+- [x] Phone number parsing from user transcripts
+- [x] Booking ID detection (confirmation code + booking ID patterns)
+- [x] Slot results limited to 3 (voice-friendly)
+- [x] Slot IDs hidden from user-facing output
+
+### Phase 7: Deployment ✅
+- [x] Deploy backend to Render (free tier)
+- [x] GitHub Actions workflow deploys `client/` to GitHub Pages on push
+- [x] Verify cross-origin WebSocket connectivity
+
+### Phase 8: Evaluation
 - [ ] Instrument LangGraph with LangSmith callbacks
 - [ ] Build `eval/judge.py` LLM-as-a-judge script
-- [ ] Run 5-10 test conversations, capture traces
+- [ ] Run test conversations, capture traces
 - [ ] Generate evaluation report
-
-### Phase 7: Polish & Presentation (Day 4)
-- [ ] Write README with setup instructions and architecture diagram
-- [ ] Write AI collaboration log section
-- [ ] Build 5-slide presentation deck
-- [ ] Record demo video (optional)
 
 ---
 
-## 9. Directory Structure
+## 10. Directory Structure
 
 ```
 roadside-rescue/
 ├── pyproject.toml              # Python backend dependencies
+├── requirements.txt            # pip dependencies
 ├── render.yaml                 # Render deployment config
 ├── README.md
 ├── PLAN.md
-├── .env.example                # API keys template (GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY optional)
+├── .env.example                # API keys template (GOOGLE_API_KEY, DEEPGRAM_API_KEY)
+│
+├── .github/workflows/
+│   └── deploy-pages.yml        # GitHub Actions → deploys client/ to Pages
 │
 ├── server/                     # ── BACKEND (deployed to Render) ──
-│   ├── main.py                 # FastAPI + WebSocket entry point
+│   ├── main.py                 # FastAPI + WebSocket + GPS SystemMessage injection
 │   ├── stt.py                  # Deepgram streaming client
-│   ├── tts.py                  # ElevenLabs TTS client (optional; browser TTS is default)
 │   ├── graph/
 │   │   ├── state.py            # ConversationState TypedDict
-│   │   ├── nodes.py            # Graph node functions
-│   │   └── builder.py          # LangGraph compilation
+│   │   ├── nodes.py            # Agent node + LangChain tool wrappers
+│   │   └── builder.py          # LangGraph compilation with MemorySaver
 │   ├── tools/
-│   │   ├── verify_vehicle.py
-│   │   ├── get_slots.py
-│   │   └── book_mechanic.py
+│   │   ├── verify_vehicle.py   # NHTSA Vehicle API validation
+│   │   ├── get_slots.py        # SQLite query (LIMIT 3, soonest first)
+│   │   ├── book_mechanic.py    # Booking creation
+│   │   └── db.py               # SQLite connection helper
 │   ├── prompts/
-│   │   └── system.py           # System prompt text
+│   │   └── system.py           # System prompt (location-first, no slot IDs)
 │   └── db/
-│       ├── schema.sql
-│       └── seed.py
+│       ├── schema.sql          # Table definitions
+│       └── seed.py             # 7 mechanics across 4 zip codes
 │
 ├── client/                     # ── FRONTEND (deployed to GitHub Pages) ──
-│   ├── index.html
-│   ├── style.css
-│   └── app.js                  # WebSocket client + browser speechSynthesis TTS
+│   ├── index.html              # Leaflet map + mic button + status card
+│   ├── style.css               # Dark theme + map container styling
+│   └── app.js                  # WebSocket, GPS, Nominatim, transcript parsing
 │
 ├── eval/
 │   └── judge.py                # LLM-as-a-judge evaluation script
 └── tests/
-    ├── test_tools.py
-    └── test_graph.py
+    └── test_tools.py           # Tool unit tests
 ```
 
 ---
 
-## 10. Known Limitations & Next Steps
+## 11. Known Limitations & Next Steps
 
 ### Intentional Limitation (Interview Bait)
 The SQLite `book_mechanic` tool has **no transactional locking or optimistic concurrency control**. Two simultaneous callers can book the same slot. This is deliberately left as the live-coding challenge topic.
+
+### Current Limitations
+- Nominatim has a 1 request/second usage policy — fine for single-user POC
+- Browser TTS quality varies by OS/browser (Safari Samantha and Chrome Google voices sound best)
+- Vehicle detection regex can't handle all speech-to-text variations
+- Location parsing relies on zip code detection — addresses without zip codes aren't geocoded
 
 ### Future Enhancements
 - Row-level locking / optimistic concurrency for bookings
@@ -331,26 +407,14 @@ The SQLite `book_mechanic` tool has **no transactional locking or optimistic con
 - Real mechanic dispatch integration
 - Voice activity detection (VAD) for hands-free start/stop
 - Upgrade to ElevenLabs paid TTS for higher-quality voice synthesis
-- Migrate from Render free tier to paid/dedicated if traffic grows
 - Custom domain for both frontend and backend
 
 ---
 
-## 11. Presentation Outline (5 Slides)
+## 12. Presentation Outline (5 Slides)
 
 1. **The Problem & JTBD** — Visual of stranded driver. JTBD statement. Why voice is the only solution.
-2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/Gemini 2.5 Flash → Browser TTS → User Audio. SQLite via tool calling.
-3. **Tool Calling & Error Handling** — Ambiguity management. Successful tool call payload snippet.
+2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/Gemini → Browser TTS. GPS → Nominatim → Leaflet Map.
+3. **Tool Calling & Location Flow** — GPS auto-detection, location confirmation, tool calls for vehicle verification and booking.
 4. **Evaluation** — LangSmith trace screenshot. Evaluation criteria and results.
 5. **Next Steps** — "Current limitation: SQLite lacks transactional locking for concurrent bookings. Next step: conflict resolution."
-
----
-
-## 12. AI Assistant Collaboration Log
-
-> *To be filled in during development. Be specific and honest about where AI tools helped and where manual work was needed.*
-
-**Template:**
-- "I used [tool] for [specific task], saving roughly [time estimate]."
-- "I used [tool] as a sounding board for [design decision]. It suggested [X], which I [adopted/modified/rejected] because [reason]."
-- "I struggled with [problem] and [tool] helped me [resolution]."
