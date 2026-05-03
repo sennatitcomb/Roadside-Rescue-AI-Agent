@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roadside Rescue</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ROADSIDE RESCUE</h1>
+      <p class="tagline">Tell me what happened and I'll get help on the way.</p>
+    </header>
+
+    <main>
+      <!-- Big mic button -->
+      <button id="mic-btn" class="mic-button" aria-label="Tap to talk">
+        <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+        <span class="mic-label">TAP TO TALK</span>
+      </button>
+
+      <!-- Live transcript -->
+      <div id="transcript" class="transcript">
+        <p class="placeholder">Your conversation will appear here...</p>
+      </div>
+
+      <!-- Status card -->
+      <div class="status-card">
+        <div class="status-row">
+          <span class="status-icon">📍</span>
+          <span class="status-label">Location:</span>
+          <span id="status-location" class="status-value">detecting...</span>
+        </div>
+        <div class="status-row">
+          <span class="status-icon">🚗</span>
+          <span class="status-label">Vehicle:</span>
+          <span id="status-vehicle" class="status-value">—</span>
+        </div>
+        <div class="status-row">
+          <span class="status-icon">🔧</span>
+          <span class="status-label">Status:</span>
+          <span id="status-state" class="status-value">Ready</span>
+        </div>
+        <div class="status-row">
+          <span class="status-icon">🎫</span>
+          <span class="status-label">Booking:</span>
+          <span id="status-booking" class="status-value">—</span>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <p class="connection-status" id="connection-status">Disconnected</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

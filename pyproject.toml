@@ -1,0 +1,26 @@
+[project]
+name = "roadside-rescue"
+version = "0.1.0"
+description = "Voice-powered AI agent for roadside mechanic booking"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "websockets>=13.0",
+    "langchain-google-genai>=2.0.0",
+    "langgraph>=0.2.0",
+    "deepgram-sdk>=3.5.0",
+    "elevenlabs>=1.5.0",
+    "langsmith>=0.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

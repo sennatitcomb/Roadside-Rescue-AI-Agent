@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: roadside-rescue
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m server.db.seed
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://sennatitcomb.github.io

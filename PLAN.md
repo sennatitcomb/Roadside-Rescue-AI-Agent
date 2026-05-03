@@ -28,7 +28,7 @@ The system is split into two independently hosted services to minimize cost:
 │  └────────────┘  │               │                    │                    │
 └──────────────────┘         ┌─────▼──────┐    ┌────────▼────────┐  ┌───────▼───────┐
                              │  Deepgram   │    │   LangGraph     │  │  ElevenLabs   │
-                             │  STT        │    │   + GPT-4o      │  │  TTS          │
+                             │  STT        │    │   + Gemini 2.0  │  │  TTS          │
                              │  (Nova-2)   │    │   State Machine │  │  (Turbo v2.5) │
                              └────────────┘    └────────┬────────┘  └───────────────┘
                                                         │
@@ -48,15 +48,15 @@ The system is split into two independently hosted services to minimize cost:
 ### Why Split Deployment?
 
 - **API key security** — Keys stay on the backend server, never exposed to the browser
-- **$0 hosting cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) = free for a POC
+- **$0 total cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) + Gemini free tier (1M tokens/day) = free for a POC
 - **Full architecture preserved** — LangGraph state machine, SQLite, and all orchestration logic remain server-side
 - **Interview-ready** — Demonstrates real backend engineering, not just client-side API calls
 
 ### Audio Flow (Round-Trip)
 
-1. **Client** (GitHub Pages) captures mic audio via `MediaRecorder` API → streams chunks over WebSocket to `wss://<your-app>.onrender.com/ws`
+1. **Client** (GitHub Pages) captures mic audio via `MediaRecorder` API → streams chunks over WebSocket to `wss://roadside-rescue.onrender.com/ws`
 2. **Server** (Render) forwards audio bytes to **Deepgram** streaming STT → receives transcript
-3. Transcript is appended to **LangGraph** conversation state → GPT-4o processes and may invoke tools
+3. Transcript is appended to **LangGraph** conversation state → Gemini 2.0 Flash processes and may invoke tools
 4. LLM response text is sent to **ElevenLabs** TTS → receives synthesized audio bytes
 5. Audio bytes are streamed back to **Client** over WebSocket → played via `AudioContext`
 
@@ -67,7 +67,7 @@ The FastAPI backend must allow cross-origin requests from your GitHub Pages doma
 ```python
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://<username>.github.io"],
+    allow_origins=["https://sennatitcomb.github.io"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -76,7 +76,7 @@ app.add_middleware(
 The client `app.js` connects to the backend via:
 
 ```javascript
-const WS_URL = "wss://<your-app>.onrender.com/ws";
+const WS_URL = "wss://roadside-rescue.onrender.com/ws";
 const ws = new WebSocket(WS_URL);
 ```
 
@@ -88,7 +88,7 @@ const ws = new WebSocket(WS_URL);
 |-----------|-----------|-----|
 | **Transport** | FastAPI + WebSockets | Native async support; backend hosted on Render free tier |
 | **STT** | Deepgram Nova-2 | Industry-leading low-latency streaming STT; excels with background noise (highway traffic) |
-| **LLM** | OpenAI GPT-4o | Best-in-class tool-calling; extracts structured params from panicked conversational input |
+| **LLM** | Google Gemini 2.0 Flash | Free API tier (15 RPM, 1M tokens/day); strong tool-calling support; zero cost for POC |
 | **TTS** | ElevenLabs Turbo v2.5 | Ultra-low latency, empathetic voice reduces panic for distressed callers |
 | **Orchestration** | LangGraph (Python) | Models conversation as a state machine; handles cycles, retries, and error routing cleanly |
 | **Storage** | SQLite | Zero-config, file-based; perfect for POC. Intentionally simple locking (interview bait) |
@@ -244,7 +244,7 @@ Pull transcripts from LangSmith, grade on three criteria:
 - [ ] Define `ConversationState` TypedDict
 - [ ] Implement graph nodes: greeting, collect_info, verify_vehicle, find_slots, confirm_book, summarize
 - [ ] Write system prompt (calm, empathetic tone; structured extraction instructions)
-- [ ] Bind 3 tools to GPT-4o, wire tool-call handling in graph
+- [ ] Bind 3 tools to Gemini 2.0 Flash via `ChatGoogleGenerativeAI`, wire tool-call handling in graph
 - [ ] Add error routing: retry logic, ambiguity handling, graceful fallbacks
 
 ### Phase 4: Integration (Day 3)
@@ -282,7 +282,7 @@ roadside-rescue/
 ├── render.yaml                 # Render deployment config
 ├── README.md
 ├── PLAN.md
-├── .env.example                # API keys template (backend only)
+├── .env.example                # API keys template (GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
 │
 ├── server/                     # ── BACKEND (deployed to Render) ──
 │   ├── main.py                 # FastAPI + WebSocket entry point
@@ -336,7 +336,7 @@ The SQLite `book_mechanic` tool has **no transactional locking or optimistic con
 ## 11. Presentation Outline (5 Slides)
 
 1. **The Problem & JTBD** — Visual of stranded driver. JTBD statement. Why voice is the only solution.
-2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/GPT-4o → ElevenLabs → User Audio. SQLite via tool calling.
+2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/Gemini 2.0 Flash → ElevenLabs → User Audio. SQLite via tool calling.
 3. **Tool Calling & Error Handling** — Ambiguity management. Successful tool call payload snippet.
 4. **Evaluation** — LangSmith trace screenshot. Evaluation criteria and results.
 5. **Next Steps** — "Current limitation: SQLite lacks transactional locking for concurrent bookings. Next step: conflict resolution."

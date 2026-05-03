@@ -1,0 +1,224 @@
+/* ── Reset & Base ── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f1119;
+  --surface: #1a1d2e;
+  --surface-hover: #242840;
+  --primary: #4f8cff;
+  --primary-glow: rgba(79, 140, 255, 0.3);
+  --danger: #ff4f4f;
+  --danger-glow: rgba(255, 79, 79, 0.3);
+  --text: #e8eaf0;
+  --text-muted: #8b8fa3;
+  --success: #4fdf7f;
+  --radius: 12px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+}
+
+.container {
+  width: 100%;
+  max-width: 480px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ── Header ── */
+header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--primary);
+}
+
+.tagline {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
+/* ── Mic Button ── */
+.mic-button {
+  align-self: center;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 3px solid var(--primary);
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  margin: 0 auto 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mic-button:hover {
+  background: var(--surface-hover);
+  box-shadow: 0 0 30px var(--primary-glow);
+}
+
+.mic-button:active {
+  transform: scale(0.95);
+}
+
+.mic-button.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.mic-button.recording .mic-label {
+  color: var(--danger);
+}
+
+.mic-button.processing {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--danger-glow); }
+  50% { box-shadow: 0 0 30px 10px var(--danger-glow); }
+}
+
+.mic-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.mic-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* ── Transcript ── */
+.transcript {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  min-height: 160px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.transcript .placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.transcript .user-msg {
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.transcript .user-msg::before {
+  content: "You: ";
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.transcript .assistant-msg {
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.transcript .assistant-msg::before {
+  content: "Rescue: ";
+  color: var(--success);
+  font-weight: 600;
+}
+
+.transcript .interim {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Status Card ── */
+.status-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.status-icon {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.status-label {
+  color: var(--text-muted);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.status-value {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ── Footer ── */
+footer {
+  margin-top: auto;
+  text-align: center;
+  padding-top: 12px;
+}
+
+.connection-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.connection-status.connected {
+  color: var(--success);
+}
+
+.connection-status.connected::before {
+  content: "● ";
+}
+
+.connection-status.disconnected::before {
+  content: "○ ";
+}
