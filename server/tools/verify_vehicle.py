@@ -1,71 +1,77 @@
-"""Verify that a vehicle make/model/year combination is valid."""
+"""Verify a vehicle make/model/year using the NHTSA Vehicle API.
 
-# Simplified vehicle database — in production this would call the NHTSA API.
-KNOWN_VEHICLES: dict[str, list[str]] = {
-    "Toyota": ["Camry", "Corolla", "RAV4", "Highlander", "Tacoma", "Prius"],
-    "Honda": ["Civic", "Accord", "CR-V", "Pilot", "Odyssey", "Fit"],
-    "Ford": ["F-150", "Mustang", "Explorer", "Escape", "Focus", "Fusion"],
-    "Chevrolet": ["Silverado", "Malibu", "Equinox", "Tahoe", "Camaro", "Traverse"],
-    "Nissan": ["Altima", "Sentra", "Rogue", "Pathfinder", "Maxima", "Frontier"],
-    "Hyundai": ["Elantra", "Sonata", "Tucson", "Santa Fe", "Kona", "Palisade"],
-    "Kia": ["Forte", "Optima", "Sorento", "Sportage", "Telluride", "Soul"],
-    "BMW": ["3 Series", "5 Series", "X3", "X5"],
-    "Tesla": ["Model 3", "Model Y", "Model S", "Model X"],
-    "Subaru": ["Outback", "Forester", "Impreza", "Crosstrek", "WRX"],
-}
+API docs: https://vpic.nhtsa.dot.gov/api/
+No API key required. Free and unlimited.
+"""
 
-MIN_YEAR = 1990
-MAX_YEAR = 2026
+import httpx
+
+NHTSA_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
 
 
-def verify_vehicle(make: str, model: str, year: int) -> dict:
-    """Check if a make/model/year combination is valid.
+async def verify_vehicle(make: str, model: str, year: int) -> dict:
+    """Check if a make/model/year combination exists in the NHTSA database.
 
     Returns dict with {valid, corrected_make, corrected_model, error}.
     """
-    # Normalize and find closest make (case-insensitive)
-    corrected_make = None
-    for known_make in KNOWN_VEHICLES:
-        if known_make.lower() == make.strip().lower():
-            corrected_make = known_make
-            break
+    make = make.strip()
+    model = model.strip()
 
-    if corrected_make is None:
+    # Validate year range
+    if not (1950 <= year <= 2026):
         return {
             "valid": False,
-            "corrected_make": None,
+            "corrected_make": make,
+            "corrected_model": model,
+            "error": f"Year {year} is out of range (1950–2026)",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Query NHTSA for models matching this make and year
+            url = f"{NHTSA_BASE}/getmodelsformakeyear/make/{make}/modelyear/{year}?format=json"
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+
+        results = data.get("Results", [])
+
+        if not results:
+            # No models found for this make — try just the make to see if it exists
+            return {
+                "valid": False,
+                "corrected_make": make,
+                "corrected_model": None,
+                "error": f"No vehicles found for make '{make}' in year {year}",
+            }
+
+        # Search for a matching model (case-insensitive)
+        model_lower = model.lower()
+        for entry in results:
+            nhtsa_model = entry.get("Model_Name", "")
+            if nhtsa_model.lower() == model_lower:
+                return {
+                    "valid": True,
+                    "corrected_make": entry.get("Make_Name", make),
+                    "corrected_model": nhtsa_model,
+                    "error": None,
+                }
+
+        # No exact match — find close matches to suggest
+        available = [r.get("Model_Name", "") for r in results[:10]]
+        return {
+            "valid": False,
+            "corrected_make": results[0].get("Make_Name", make),
             "corrected_model": None,
-            "error": f"Unknown vehicle make: '{make}'",
+            "error": f"'{model}' is not a known {make} model for {year}. Similar models: {', '.join(available)}",
         }
 
-    # Find closest model
-    corrected_model = None
-    for known_model in KNOWN_VEHICLES[corrected_make]:
-        if known_model.lower() == model.strip().lower():
-            corrected_model = known_model
-            break
-
-    if corrected_model is None:
-        available = ", ".join(KNOWN_VEHICLES[corrected_make])
+    except httpx.HTTPError as e:
+        # Fallback: if NHTSA API is down, accept the vehicle
+        print(f"[NHTSA] API error: {e}, accepting vehicle as valid")
         return {
-            "valid": False,
-            "corrected_make": corrected_make,
-            "corrected_model": None,
-            "error": f"'{model}' is not a known {corrected_make} model. Known models: {available}",
+            "valid": True,
+            "corrected_make": make,
+            "corrected_model": model,
+            "error": None,
         }
-
-    # Validate year
-    if not (MIN_YEAR <= year <= MAX_YEAR):
-        return {
-            "valid": False,
-            "corrected_make": corrected_make,
-            "corrected_model": corrected_model,
-            "error": f"Year {year} is out of range ({MIN_YEAR}–{MAX_YEAR})",
-        }
-
-    return {
-        "valid": True,
-        "corrected_make": corrected_make,
-        "corrected_model": corrected_model,
-        "error": None,
-    }

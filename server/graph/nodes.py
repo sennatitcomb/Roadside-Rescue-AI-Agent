@@ -17,11 +17,11 @@ from server.tools.verify_vehicle import verify_vehicle as _verify_vehicle
 
 
 @tool
-def verify_vehicle(make: str, model: str, year: int) -> dict:
-    """Check if a vehicle make/model/year combination is valid.
+async def verify_vehicle(make: str, model: str, year: int) -> dict:
+    """Check if a vehicle make/model/year combination is valid using the NHTSA database.
     Returns dict with valid, corrected_make, corrected_model, error."""
     print(f"[Tool] verify_vehicle({make}, {model}, {year})")
-    result = _verify_vehicle(make, model, year)
+    result = await _verify_vehicle(make, model, year)
     print(f"[Tool] verify_vehicle result: {result}")
     return result
 
