@@ -15,9 +15,9 @@ A driver broken down on a highway can't safely navigate a mobile app. Voice is t
 ┌────────────────┐   WebSocket (wss://)  ┌─────────────────────┐
 │  index.html    │◄─────────────────────►│  FastAPI Server     │
 │  style.css     │                       │  LangGraph + Gemini │
-│  app.js        │                       │  Deepgram / 11Labs  │
-└────────────────┘                       │  SQLite DB          │
-                                         └─────────────────────┘
+│  app.js        │                       │  Deepgram STT       │
+│  speechSynth.  │◄── text response ──────│  SQLite DB          │
+└────────────────┘  (browser TTS)        └─────────────────────┘
 ```
 
 | Component | Technology |
@@ -25,8 +25,8 @@ A driver broken down on a highway can't safely navigate a mobile app. Voice is t
 | Frontend | GitHub Pages (static HTML/CSS/JS) |
 | Backend | FastAPI + WebSockets on Render (free tier) |
 | Speech-to-Text | Deepgram Nova-2 |
-| LLM | Google Gemini 2.0 Flash (free tier) |
-| Text-to-Speech | ElevenLabs Turbo v2.5 |
+| LLM | Google Gemini 2.5 Flash (free tier) |
+| Text-to-Speech | Browser Web Speech API (free; ElevenLabs optional upgrade) |
 | Orchestration | LangGraph (Python) |
 | Storage | SQLite |
 | Evaluation | LangSmith |
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 # 2. Set up environment variables
 cp .env.example .env
-# Fill in: GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY
+# Fill in: GOOGLE_API_KEY, DEEPGRAM_API_KEY (ELEVENLABS_API_KEY optional)
 
 # 3. Initialize database
 python server/db/seed.py
@@ -57,7 +57,7 @@ uvicorn server.main:app --reload
 ## Deployment
 
 - **Frontend** → GitHub Pages: Settings → Pages → source: `main` / `/ (root)` → access at `/client/`
-- **Backend** → Connect repo to [Render](https://render.com) free tier, set env vars (`GOOGLE_API_KEY`, `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`)
+- **Backend** → Connect repo to [Render](https://render.com) free tier, set env vars (`GOOGLE_API_KEY`, `DEEPGRAM_API_KEY`; `ELEVENLABS_API_KEY` optional)
 - **Live demo**: [sennatitcomb.github.io/Roadside-Rescue-AI-Agent/client/](https://sennatitcomb.github.io/Roadside-Rescue-AI-Agent/client/)
 
 ## Project Structure
@@ -70,7 +70,7 @@ uvicorn server.main:app --reload
 ├── server/                     # BACKEND (Render free tier)
 │   ├── main.py                 # FastAPI + WebSocket server
 │   ├── stt.py                  # Deepgram streaming client
-│   ├── tts.py                  # ElevenLabs streaming client
+│   ├── tts.py                  # ElevenLabs TTS (optional; browser TTS is default)
 │   ├── graph/                  # LangGraph state machine
 │   ├── tools/                  # LLM tool functions
 │   ├── prompts/                # System prompt

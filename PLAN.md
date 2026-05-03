@@ -24,15 +24,15 @@ The system is split into two independently hosted services to minimize cost:
 │  ┌────────────┐  │                        │  (Orchestrator)       │
 │  │ index.html │  │                        └───────────┬───────────┘
 │  │ style.css  │  │                                    │
-│  │ app.js     │  │               ┌────────────────────┼────────────────────┐
-│  └────────────┘  │               │                    │                    │
-└──────────────────┘         ┌─────▼──────┐    ┌────────▼────────┐  ┌───────▼───────┐
-                             │  Deepgram   │    │   LangGraph     │  │  ElevenLabs   │
-                             │  STT        │    │   + Gemini 2.0  │  │  TTS          │
-                             │  (Nova-2)   │    │   State Machine │  │  (Turbo v2.5) │
-                             └────────────┘    └────────┬────────┘  └───────────────┘
-                                                        │
-                                             ┌──────────┼──────────┐
+│  │ app.js     │  │               ┌────────────────────┼──────────┐
+│  │ speechSyn. │  │               │                    │          │
+│  └────────────┘  │         ┌─────▼──────┐    ┌────────▼────────┐ │
+└──────────────────┘         │  Deepgram   │    │   LangGraph     │ │
+   Browser TTS ◄─── text ── │  STT        │    │   + Gemini 2.5  │ │
+   (speechSynthesis)         │  (Nova-2)   │    │   State Machine │ │
+                             └────────────┘    └────────┬────────┘ │
+                                                        │          │
+                                             ┌──────────┼──────────┤
                                              │          │          │
                                        ┌─────▼───┐ ┌───▼────┐ ┌──▼──────────┐
                                        │verify_  │ │get_    │ │book_        │
@@ -48,17 +48,19 @@ The system is split into two independently hosted services to minimize cost:
 ### Why Split Deployment?
 
 - **API key security** — Keys stay on the backend server, never exposed to the browser
-- **$0 total cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) + Gemini free tier (1M tokens/day) = free for a POC
+- **$0 total cost** — GitHub Pages (static) + Render free tier (750 hrs/mo) + Gemini free tier + Browser TTS + Deepgram ($200 free credit) = free for a POC
 - **Full architecture preserved** — LangGraph state machine, SQLite, and all orchestration logic remain server-side
 - **Interview-ready** — Demonstrates real backend engineering, not just client-side API calls
 
 ### Audio Flow (Round-Trip)
 
-1. **Client** (GitHub Pages) captures mic audio via `MediaRecorder` API → streams chunks over WebSocket to `wss://roadside-rescue.onrender.com/ws`
+1. **Client** (GitHub Pages) captures mic audio via `MediaRecorder` API → streams chunks over WebSocket to `wss://roadside-rescue-ai-agent.onrender.com/ws`
 2. **Server** (Render) forwards audio bytes to **Deepgram** streaming STT → receives transcript
-3. Transcript is appended to **LangGraph** conversation state → Gemini 2.0 Flash processes and may invoke tools
-4. LLM response text is sent to **ElevenLabs** TTS → receives synthesized audio bytes
-5. Audio bytes are streamed back to **Client** over WebSocket → played via `AudioContext`
+3. Transcript is appended to **LangGraph** conversation state → Gemini 2.5 Flash processes and may invoke tools
+4. LLM response text is sent back to **Client** over WebSocket as JSON
+5. **Client** speaks the response aloud using the browser's built-in `speechSynthesis` API (Web Speech API)
+
+> **Note:** ElevenLabs TTS is included as an optional server-side upgrade. The free tier blocks cloud server IPs, so the browser's native TTS is used by default for zero-cost deployment.
 
 ### CORS & WebSocket Configuration
 
@@ -76,7 +78,7 @@ app.add_middleware(
 The client `app.js` connects to the backend via:
 
 ```javascript
-const WS_URL = "wss://roadside-rescue.onrender.com/ws";
+const WS_URL = "wss://roadside-rescue-ai-agent.onrender.com/ws";
 const ws = new WebSocket(WS_URL);
 ```
 
@@ -88,8 +90,8 @@ const ws = new WebSocket(WS_URL);
 |-----------|-----------|-----|
 | **Transport** | FastAPI + WebSockets | Native async support; backend hosted on Render free tier |
 | **STT** | Deepgram Nova-2 | Industry-leading low-latency streaming STT; excels with background noise (highway traffic) |
-| **LLM** | Google Gemini 2.0 Flash | Free API tier (15 RPM, 1M tokens/day); strong tool-calling support; zero cost for POC |
-| **TTS** | ElevenLabs Turbo v2.5 | Ultra-low latency, empathetic voice reduces panic for distressed callers |
+| **LLM** | Google Gemini 2.5 Flash | Free API tier (5 RPM, 20 RPD); strong tool-calling support; zero cost for POC |
+| **TTS** | Browser Web Speech API (`speechSynthesis`) | Zero-cost, no API key, works on all modern browsers. ElevenLabs Turbo v2.5 available as optional paid upgrade |
 | **Orchestration** | LangGraph (Python) | Models conversation as a state machine; handles cycles, retries, and error routing cleanly |
 | **Storage** | SQLite | Zero-config, file-based; perfect for POC. Intentionally simple locking (interview bait) |
 | **Eval** | LangSmith | Native LangGraph integration for trace logging and LLM-as-a-judge evaluation |
@@ -195,7 +197,7 @@ GREETING ──► COLLECT_INFO ◄─── (ambiguous input → re-ask)
 - **Auto-geolocation** — `navigator.geolocation.getCurrentPosition()` on page load
 - **PWA-ready** — optional `manifest.json` for home-screen install
 
-**Tech:** Vanilla HTML/CSS/JS, WebSocket API, MediaRecorder API, AudioContext API.
+**Tech:** Vanilla HTML/CSS/JS, WebSocket API, MediaRecorder API, Web Speech API (`speechSynthesis`).
 
 ---
 
@@ -237,18 +239,18 @@ Pull transcripts from LangSmith, grade on three criteria:
 - [ ] FastAPI WebSocket endpoint — accept/manage audio connections
 - [ ] Add CORS middleware for GitHub Pages origin
 - [ ] Deepgram STT integration — stream audio in, receive transcripts
-- [ ] ElevenLabs TTS integration — send text, stream audio back
-- [ ] Verify end-to-end audio round-trip
+- [ ] Browser TTS via `speechSynthesis` API (with ElevenLabs as optional server-side fallback)
+- [ ] Verify end-to-end voice round-trip
 
 ### Phase 3: LangGraph Brain (Day 2-3)
 - [ ] Define `ConversationState` TypedDict
 - [ ] Implement graph nodes: greeting, collect_info, verify_vehicle, find_slots, confirm_book, summarize
 - [ ] Write system prompt (calm, empathetic tone; structured extraction instructions)
-- [ ] Bind 3 tools to Gemini 2.0 Flash via `ChatGoogleGenerativeAI`, wire tool-call handling in graph
+- [ ] Bind 3 tools to Gemini 2.5 Flash via `ChatGoogleGenerativeAI`, wire tool-call handling in graph
 - [ ] Add error routing: retry logic, ambiguity handling, graceful fallbacks
 
 ### Phase 4: Integration (Day 3)
-- [ ] Wire full loop: client audio → STT → LangGraph → TTS → client audio
+- [ ] Wire full loop: client audio → STT → LangGraph → text response → browser TTS
 - [ ] Build static web client (`client/index.html`, `client/style.css`, `client/app.js`)
 - [ ] Configure `app.js` to connect to Render backend via `wss://`
 - [ ] Add geolocation auto-capture
@@ -282,12 +284,12 @@ roadside-rescue/
 ├── render.yaml                 # Render deployment config
 ├── README.md
 ├── PLAN.md
-├── .env.example                # API keys template (GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
+├── .env.example                # API keys template (GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY optional)
 │
 ├── server/                     # ── BACKEND (deployed to Render) ──
 │   ├── main.py                 # FastAPI + WebSocket entry point
 │   ├── stt.py                  # Deepgram streaming client
-│   ├── tts.py                  # ElevenLabs streaming client
+│   ├── tts.py                  # ElevenLabs TTS client (optional; browser TTS is default)
 │   ├── graph/
 │   │   ├── state.py            # ConversationState TypedDict
 │   │   ├── nodes.py            # Graph node functions
@@ -305,7 +307,7 @@ roadside-rescue/
 ├── client/                     # ── FRONTEND (deployed to GitHub Pages) ──
 │   ├── index.html
 │   ├── style.css
-│   └── app.js                  # WebSocket client → wss://<app>.onrender.com/ws
+│   └── app.js                  # WebSocket client + browser speechSynthesis TTS
 │
 ├── eval/
 │   └── judge.py                # LLM-as-a-judge evaluation script
@@ -328,6 +330,7 @@ The SQLite `book_mechanic` tool has **no transactional locking or optimistic con
 - SMS confirmation via Twilio after booking
 - Real mechanic dispatch integration
 - Voice activity detection (VAD) for hands-free start/stop
+- Upgrade to ElevenLabs paid TTS for higher-quality voice synthesis
 - Migrate from Render free tier to paid/dedicated if traffic grows
 - Custom domain for both frontend and backend
 
@@ -336,7 +339,7 @@ The SQLite `book_mechanic` tool has **no transactional locking or optimistic con
 ## 11. Presentation Outline (5 Slides)
 
 1. **The Problem & JTBD** — Visual of stranded driver. JTBD statement. Why voice is the only solution.
-2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/Gemini 2.0 Flash → ElevenLabs → User Audio. SQLite via tool calling.
+2. **System Architecture** — Block diagram: User Audio → WebSocket → Deepgram → LangGraph/Gemini 2.5 Flash → Browser TTS → User Audio. SQLite via tool calling.
 3. **Tool Calling & Error Handling** — Ambiguity management. Successful tool call payload snippet.
 4. **Evaluation** — LangSmith trace screenshot. Evaluation criteria and results.
 5. **Next Steps** — "Current limitation: SQLite lacks transactional locking for concurrent bookings. Next step: conflict resolution."
