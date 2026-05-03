@@ -147,7 +147,6 @@ function setStatus(text) {
 }
 
 function parseAssistantResponse(text) {
-  // Simple keyword extraction to update status card
   const lower = text.toLowerCase();
 
   // Vehicle detection
@@ -165,48 +164,37 @@ function parseAssistantResponse(text) {
     setStatus("Booked!");
   }
 
-  // Location confirmation — agent asks "you're near X, is that right?"
-  // This means the agent is confirming the GPS location; keep status as "Confirming..."
-  const confirmingMatch = lower.match(/(?:you're near|i see you're|you're at|you're on|located at|location.*?is)\b/);
-  if (confirmingMatch && lower.match(/(?:is that right|right\??|correct|sound right)/)) {
-    // Agent is asking for confirmation — stay pending
+  // ── Location handling ──
+  // Step 1: If agent is ASKING for confirmation ("is that right?"), stay pending
+  if (lower.match(/is that (?:right|correct)|(?:sound|that) right\??|correct\?/)) {
     return;
   }
 
-  // Location confirmed by user — agent proceeds with acknowledgment
-  // Match phrases like "Got it, you're at..." or "Great, so you're near..."
-  if (statusLocation.textContent === "Confirming..." && pendingAddress) {
-    const confirmedWithLocation = lower.match(
-      /(?:got it|perfect|great|alright|noted|confirmed|okay).*(?:you're|you are|near|at|on|location)/
-    );
-    // Also match when agent simply moves on after the user confirmed (e.g. "Great. Now, what's your vehicle...")
-    const confirmedAndMovedOn = lower.match(
-      /(?:got it|perfect|great|alright|noted|confirmed).*(?:vehicle|car|what'?s your|tell me)/
-    );
-    if (confirmedWithLocation || confirmedAndMovedOn) {
-      const { road, city, zip } = pendingAddress;
-      const display = [road, city, zip].filter(Boolean).join(", ");
-      statusLocation.textContent = display || pendingAddress.formatted;
-      return;
-    }
-  }
+  // Step 2: Look for a zip code in the response — this signals a location mention
+  const zipMatch = text.match(/\b(\d{5})\b/);
+  if (!zipMatch) return;
 
-  // Location correction — agent acknowledges a new location from the user
-  const locationMatch = text.match(/(?:you're (?:near|at|on)|located at|location.*?(?:is|updated to|changed to))\s+(.+?)(?:\.|,\s*(?:is that|right|correct)|$)/i);
-  if (locationMatch) {
-    const corrected = locationMatch[1].trim();
-    forwardGeocode(corrected);
-  }
-}
+  const zip = zipMatch[1];
 
-function confirmLocation(address) {
-  // Called when agent confirms or user corrects — show formatted address
-  statusLocation.textContent = address;
+  // Extract address text near the zip code (everything before the zip in the same sentence)
+  const sentenceWithZip = text.split(/[.!]/).find((s) => s.includes(zip)) || "";
+  // Pull out street/city/state tokens before the zip
+  const beforeZip = sentenceWithZip.substring(0, sentenceWithZip.indexOf(zip)).trim();
+  // Take the last meaningful chunk (after "to", "at", "near", or from the start)
+  const addrMatch = beforeZip.match(/(?:to|at|near|on)\s+(.+?)(?:,\s*)?$/i);
+  const addressPart = addrMatch ? addrMatch[1].trim() : "";
+
+  // Build query for geocoding: address + zip
+  const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
+
+  // Forward geocode to validate and update map + status
+  forwardGeocode(geocodeQuery);
 }
 
 function forwardGeocode(query) {
+  statusLocation.textContent = "Updating...";
   fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=us`,
     { headers: { "Accept-Language": "en" } }
   )
     .then((r) => r.json())
@@ -214,15 +202,25 @@ function forwardGeocode(query) {
       if (results.length > 0) {
         const { lat, lon, display_name } = results[0];
         updateMapLocation(parseFloat(lat), parseFloat(lon), display_name);
-        // Parse display_name into parts for formatted display
+        // Format as "Street, City, Zip"
         const parts = display_name.split(", ");
-        const formatted = parts.slice(0, 3).join(", ");
+        // Nominatim returns: street, city, county, state, zip, country
+        // We want: street, city, zip
+        const street = parts[0] || "";
+        const city = parts[1] || "";
+        // Find the zip in the display name
+        const displayZip = parts.find((p) => /^\d{5}$/.test(p.trim())) || "";
+        const formatted = [street, city, displayZip].filter(Boolean).join(", ");
         statusLocation.textContent = formatted || query;
-        // Update pending address so future confirmations use the corrected one
         pendingAddress = null;
+      } else {
+        // Geocoding failed — show what we have
+        statusLocation.textContent = query;
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      statusLocation.textContent = query;
+    });
 }
 
 // ── Audio capture ──
