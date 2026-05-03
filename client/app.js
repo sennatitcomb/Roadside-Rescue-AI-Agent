@@ -153,12 +153,26 @@ function parseUserTranscript(text) {
   const zipMatch = text.match(/\b(\d{5})\b/);
   if (zipMatch) {
     const zip = zipMatch[1];
-    const beforeZip = text.substring(0, text.indexOf(zip)).trim();
-    const addrMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
-    const addressPart = addrMatch ? addrMatch[1].trim() : "";
-    const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
-    pendingAddress = null;
-    forwardGeocode(geocodeQuery);
+    const zipIndex = text.indexOf(zip);
+
+    // Extract address from BEFORE the zip ("on Dexter Avenue 98101")
+    const beforeZip = text.substring(0, zipIndex).trim();
+    const beforeMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
+    const beforePart = beforeMatch ? beforeMatch[1].trim() : "";
+
+    // Extract address from AFTER the zip ("98109 Dexter Avenue North")
+    const afterZip = text.substring(zipIndex + 5).trim();
+    const afterMatch = afterZip.match(/^,?\s*([\w\s]+?)(?:\.|,|$)/i);
+    const afterPart = afterMatch ? afterMatch[1].trim() : "";
+
+    // Use whichever side has the street name
+    const addressPart = beforePart || afterPart;
+    if (addressPart) {
+      const geocodeQuery = `${addressPart}, ${zip}`;
+      pendingAddress = null;
+      forwardGeocode(geocodeQuery);
+    }
+    // Skip bare zip codes — too unreliable for geocoding
   }
 
   // Detect phone number (10 digits, with or without formatting)
@@ -204,11 +218,14 @@ function parseAssistantResponse(text) {
       const display = [road, city, zip].filter(Boolean).join(", ");
       statusLocation.textContent = display || pendingAddress.formatted;
       pendingAddress = null;
-      // Don't return — still check for zip in case agent also mentioned a new one
     }
   }
 
-  // Step 3: Look for a zip code in the response — this signals a location update
+  // Step 3: Look for a zip code — but SKIP if agent is discussing slots/availability
+  if (lower.match(/(?:slot|available|appointment|mechanic|book|no (?:available|slots))/)) {
+    return;
+  }
+
   const zipMatch = text.match(/\b(\d{5})\b/);
   if (!zipMatch) return;
 
