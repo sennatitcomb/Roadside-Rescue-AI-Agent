@@ -19,6 +19,7 @@ const transcriptEl = document.getElementById("transcript");
 const statusLocation = document.getElementById("status-location");
 const statusVehicle = document.getElementById("status-vehicle");
 const statusState = document.getElementById("status-state");
+const statusPhone = document.getElementById("status-phone");
 const statusBooking = document.getElementById("status-booking");
 const connectionStatus = document.getElementById("connection-status");
 
@@ -150,30 +151,35 @@ function setStatus(text) {
 function parseUserTranscript(text) {
   // Detect when user corrects their location by mentioning a zip code
   const zipMatch = text.match(/\b(\d{5})\b/);
-  if (!zipMatch) return;
+  if (zipMatch) {
+    const zip = zipMatch[1];
+    const beforeZip = text.substring(0, text.indexOf(zip)).trim();
+    const addrMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
+    const addressPart = addrMatch ? addrMatch[1].trim() : "";
+    const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
+    pendingAddress = null;
+    forwardGeocode(geocodeQuery);
+  }
 
-  const zip = zipMatch[1];
-
-  // Extract address text before the zip (e.g. "Dexter Avenue" from "I'm on Dexter Avenue 98101")
-  const beforeZip = text.substring(0, text.indexOf(zip)).trim();
-  const addrMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
-  const addressPart = addrMatch ? addrMatch[1].trim() : "";
-  const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
-
-  // Forward geocode the corrected location — update map pin and status
-  pendingAddress = null; // Clear old GPS address so acknowledgment doesn't use it
-  forwardGeocode(geocodeQuery);
+  // Detect phone number (10 digits, with or without formatting)
+  const phoneMatch = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+  if (phoneMatch) {
+    const digits = phoneMatch[0].replace(/\D/g, "");
+    statusPhone.textContent = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
 }
 
 function parseAssistantResponse(text) {
   const lower = text.toLowerCase();
 
-  // Vehicle detection
-  const vehicleMatch = text.match(
-    /(\d{4})\s+([\w-]+)\s+([\w-]+(?:\s+\w+)?)/i
-  );
-  if (vehicleMatch) {
-    statusVehicle.textContent = `${vehicleMatch[1]} ${vehicleMatch[2]} ${vehicleMatch[3]}`;
+  // Vehicle detection — match both "2023 Tesla Model 3" and "Tesla Model 3 (2023)"
+  const yearFirstMatch = text.match(/\b(\d{4})\s+([\w-]+)\s+((?:Model\s+)?[\w-]+)/i);
+  const yearLastMatch = text.match(/([\w-]+)\s+((?:Model\s+)?[\w-]+)\s+\(?(\d{4})\)?/i);
+
+  if (yearFirstMatch && parseInt(yearFirstMatch[1]) >= 1990 && parseInt(yearFirstMatch[1]) <= 2030) {
+    statusVehicle.textContent = `${yearFirstMatch[1]} ${yearFirstMatch[2]} ${yearFirstMatch[3]}`;
+  } else if (yearLastMatch && parseInt(yearLastMatch[3]) >= 1990 && parseInt(yearLastMatch[3]) <= 2030) {
+    statusVehicle.textContent = `${yearLastMatch[3]} ${yearLastMatch[1]} ${yearLastMatch[2]}`;
   }
 
   // Booking confirmation — match "confirmation code", "booking ID", "booking code", etc.
