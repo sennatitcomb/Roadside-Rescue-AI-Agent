@@ -36,22 +36,25 @@ class DeepgramSTT:
         transcript_cb = self._on_transcript
         utterance_cb = self._on_utterance_end
 
-        async def _on_message(_self, result, **kwargs):
-            text = result.channel.alternatives[0].transcript
-            if text:
-                await transcript_cb(text, result.is_final)
+        async def _on_message(self_or_result=None, result=None, **kwargs):
+            # SDK v3 may pass (self, result) or (result,) depending on version
+            actual_result = result if result is not None else self_or_result
+            try:
+                text = actual_result.channel.alternatives[0].transcript
+                if text:
+                    await transcript_cb(text, actual_result.is_final)
+            except Exception as e:
+                print(f"[Deepgram STT] Transcript parse error: {e}")
 
-        async def _on_utterance_end_handler(_self, _event, **kwargs):
+        async def _on_utterance_end(*args, **kwargs):
             if utterance_cb:
                 await utterance_cb()
 
-        async def _on_error(_self, error, **kwargs):
-            print(f"[Deepgram STT] Error: {error}")
+        async def _on_error(*args, **kwargs):
+            print(f"[Deepgram STT] Error: {args} {kwargs}")
 
         self._connection.on(LiveTranscriptionEvents.Transcript, _on_message)
-        self._connection.on(
-            LiveTranscriptionEvents.UtteranceEnd, _on_utterance_end_handler
-        )
+        self._connection.on(LiveTranscriptionEvents.UtteranceEnd, _on_utterance_end)
         self._connection.on(LiveTranscriptionEvents.Error, _on_error)
 
         options = LiveOptions(
