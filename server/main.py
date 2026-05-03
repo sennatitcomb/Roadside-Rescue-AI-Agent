@@ -85,8 +85,11 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.send_json({"type": "assistant_text", "text": reply})
 
             print("[Main] Starting TTS...")
-            async for audio_chunk in stream_speech(reply):
-                await ws.send_bytes(audio_chunk)
+            try:
+                async for audio_chunk in stream_speech(reply):
+                    await ws.send_bytes(audio_chunk)
+            except Exception as tts_err:
+                print(f"[Main] TTS failed (client will use browser TTS): {tts_err}")
 
             await ws.send_json({"type": "audio_end"})
             print("[Main] Audio sent to client")

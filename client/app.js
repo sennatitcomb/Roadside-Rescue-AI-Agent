@@ -91,12 +91,12 @@ function handleMessage(msg) {
       addTranscript("assistant", msg.text);
       setStatus("Speaking...");
       parseAssistantResponse(msg.text);
+      // Use browser TTS to speak the response
+      speakText(msg.text);
       break;
 
     case "audio_end":
-      // TTS finished streaming — user can talk again
-      micBtn.classList.remove("processing");
-      setStatus(isRecording ? "Listening..." : "Ready");
+      // Server signals processing complete
       break;
 
     case "error":
@@ -266,6 +266,50 @@ async function playNextChunk() {
       playNextChunk();
     }
   }
+}
+
+// ── Browser TTS ──
+
+function speakText(text) {
+  if (!("speechSynthesis" in window)) {
+    console.warn("Browser TTS not supported");
+    micBtn.classList.remove("processing");
+    setStatus(isRecording ? "Listening..." : "Ready");
+    return;
+  }
+
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  // Pick a natural-sounding voice if available
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(
+    (v) => v.name.includes("Samantha") || v.name.includes("Google") || v.lang === "en-US"
+  );
+  if (preferred) utterance.voice = preferred;
+
+  utterance.onend = () => {
+    micBtn.classList.remove("processing");
+    setStatus(isRecording ? "Listening..." : "Ready");
+  };
+
+  utterance.onerror = () => {
+    micBtn.classList.remove("processing");
+    setStatus(isRecording ? "Listening..." : "Ready");
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Load voices (some browsers load them async)
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+  };
 }
 
 // ── Geolocation ──
