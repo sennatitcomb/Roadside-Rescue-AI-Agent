@@ -14,7 +14,7 @@ A driver broken down on a highway can't safely navigate a mobile app. Voice is t
   GitHub Pages (free)                      Render free tier
 ┌────────────────┐   WebSocket (wss://)  ┌─────────────────────┐
 │  index.html    │◄─────────────────────►│  FastAPI Server     │
-│  style.css     │                       │  LangGraph + GPT-4o │
+│  style.css     │                       │  LangGraph + Gemini │
 │  app.js        │                       │  Deepgram / 11Labs  │
 └────────────────┘                       │  SQLite DB          │
                                          └─────────────────────┘
@@ -25,7 +25,7 @@ A driver broken down on a highway can't safely navigate a mobile app. Voice is t
 | Frontend | GitHub Pages (static HTML/CSS/JS) |
 | Backend | FastAPI + WebSockets on Render (free tier) |
 | Speech-to-Text | Deepgram Nova-2 |
-| LLM | OpenAI GPT-4o |
+| LLM | Google Gemini 2.0 Flash (free tier) |
 | Text-to-Speech | ElevenLabs Turbo v2.5 |
 | Orchestration | LangGraph (Python) |
 | Storage | SQLite |
@@ -35,13 +35,13 @@ A driver broken down on a highway can't safely navigate a mobile app. Voice is t
 
 ```bash
 # 1. Clone and install
-git clone <repo-url>
-cd roadside-rescue
-pip install -e .
+git clone https://github.com/sennatitcomb/Roadside-Rescue-AI-Agent.git
+cd Roadside-Rescue-AI-Agent
+pip install -r requirements.txt
 
 # 2. Set up environment variables
 cp .env.example .env
-# Fill in: DEEPGRAM_API_KEY, OPENAI_API_KEY, ELEVENLABS_API_KEY, LANGSMITH_API_KEY
+# Fill in: GOOGLE_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY
 
 # 3. Initialize database
 python server/db/seed.py
@@ -56,9 +56,9 @@ uvicorn server.main:app --reload
 
 ## Deployment
 
-- **Frontend** → Push `client/` to GitHub Pages (Settings → Pages → source: `/client`)
-- **Backend** → Connect repo to [Render](https://render.com) free tier, set env vars, deploy `server/`
-- Update `WS_URL` in `client/app.js` to point to your Render backend: `wss://<your-app>.onrender.com/ws`
+- **Frontend** → GitHub Pages: Settings → Pages → source: `main` / `/ (root)` → access at `/client/`
+- **Backend** → Connect repo to [Render](https://render.com) free tier, set env vars (`GOOGLE_API_KEY`, `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`)
+- **Live demo**: [sennatitcomb.github.io/Roadside-Rescue-AI-Agent/client/](https://sennatitcomb.github.io/Roadside-Rescue-AI-Agent/client/)
 
 ## Project Structure
 
