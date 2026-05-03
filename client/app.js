@@ -247,27 +247,22 @@ function parseAssistantResponse(text) {
 function forwardGeocode(query) {
   statusLocation.textContent = "Updating...";
   fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=us`,
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=us&addressdetails=1`,
     { headers: { "Accept-Language": "en" } }
   )
     .then((r) => r.json())
     .then((results) => {
       if (results.length > 0) {
-        const { lat, lon, display_name } = results[0];
+        const { lat, lon, display_name, address } = results[0];
         updateMapLocation(parseFloat(lat), parseFloat(lon), display_name);
-        // Format as "Street, City, Zip"
-        const parts = display_name.split(", ");
-        // Nominatim returns: street, city, county, state, zip, country
-        // We want: street, city, zip
-        const street = parts[0] || "";
-        const city = parts[1] || "";
-        // Find the zip in the display name
-        const displayZip = parts.find((p) => /^\d{5}$/.test(p.trim())) || "";
-        const formatted = [street, city, displayZip].filter(Boolean).join(", ");
+        // Use structured address fields instead of parsing display_name
+        const road = address?.road || "";
+        const city = address?.city || address?.town || address?.village || "";
+        const zip = address?.postcode || "";
+        const formatted = [road, city, zip].filter(Boolean).join(", ");
         statusLocation.textContent = formatted || query;
         pendingAddress = null;
       } else {
-        // Geocoding failed — show what we have
         statusLocation.textContent = query;
       }
     })
