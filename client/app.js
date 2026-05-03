@@ -158,11 +158,13 @@ function parseUserTranscript(text) {
     // Extract address from BEFORE the zip ("on Dexter Avenue 98101")
     const beforeZip = text.substring(0, zipIndex).trim();
     const beforeMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
-    const beforePart = beforeMatch ? beforeMatch[1].trim() : "";
+    let beforePart = beforeMatch ? beforeMatch[1].trim() : "";
+    // Strip trailing prepositions ("Dexter Avenue North at" → "Dexter Avenue North")
+    beforePart = beforePart.replace(/\s+(?:at|on|near|in)$/i, "");
 
     // Extract address from AFTER the zip ("98109 Dexter Avenue North")
     const afterZip = text.substring(zipIndex + 5).trim();
-    const afterMatch = afterZip.match(/^,?\s*([\w\s]+?)(?:\.|,|$)/i);
+    const afterMatch = afterZip.match(/^,?\s*(?:on|at|near)?\s*([\w\s]+?)(?:\.|,|$)/i);
     const afterPart = afterMatch ? afterMatch[1].trim() : "";
 
     // Use whichever side has the street name
@@ -172,7 +174,6 @@ function parseUserTranscript(text) {
       pendingAddress = null;
       forwardGeocode(geocodeQuery);
     }
-    // Skip bare zip codes — too unreliable for geocoding
   }
 
   // Detect phone number (10 digits, with or without formatting)
@@ -187,12 +188,17 @@ function parseAssistantResponse(text) {
   const lower = text.toLowerCase();
 
   // Vehicle detection — match both "2023 Tesla Model 3" and "Tesla Model 3 (2023)"
+  // Exclude date-like matches (year followed by "at", "on", "in", etc.)
+  const STOP_WORDS = /^(at|on|in|the|to|is|a|an|and|or|for|may|june|july|august)$/i;
+
   const yearFirstMatch = text.match(/\b(\d{4})\s+([\w-]+)\s+((?:Model\s+)?[\w-]+)/i);
   const yearLastMatch = text.match(/([\w-]+)\s+((?:Model\s+)?[\w-]+)\s+\(?(\d{4})\)?/i);
 
-  if (yearFirstMatch && parseInt(yearFirstMatch[1]) >= 1990 && parseInt(yearFirstMatch[1]) <= 2030) {
+  if (yearFirstMatch && parseInt(yearFirstMatch[1]) >= 1990 && parseInt(yearFirstMatch[1]) <= 2030
+      && !STOP_WORDS.test(yearFirstMatch[2])) {
     statusVehicle.textContent = `${yearFirstMatch[1]} ${yearFirstMatch[2]} ${yearFirstMatch[3]}`;
-  } else if (yearLastMatch && parseInt(yearLastMatch[3]) >= 1990 && parseInt(yearLastMatch[3]) <= 2030) {
+  } else if (yearLastMatch && parseInt(yearLastMatch[3]) >= 1990 && parseInt(yearLastMatch[3]) <= 2030
+      && !STOP_WORDS.test(yearLastMatch[1])) {
     statusVehicle.textContent = `${yearLastMatch[3]} ${yearLastMatch[1]} ${yearLastMatch[2]}`;
   }
 
