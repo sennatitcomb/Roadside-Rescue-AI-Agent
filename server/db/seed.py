@@ -24,13 +24,8 @@ def seed(db_path: Path = DB_PATH) -> None:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Apply schema
+    # Apply schema (drops and recreates tables)
     cursor.executescript(SCHEMA_PATH.read_text())
-
-    # Clear existing data
-    cursor.execute("DELETE FROM bookings")
-    cursor.execute("DELETE FROM available_slots")
-    cursor.execute("DELETE FROM mechanics")
 
     # Insert mechanics
     cursor.executemany(

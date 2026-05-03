@@ -1,13 +1,17 @@
 -- Roadside Rescue SQLite Schema
 
-CREATE TABLE IF NOT EXISTS mechanics (
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS available_slots;
+DROP TABLE IF EXISTS mechanics;
+
+CREATE TABLE mechanics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     phone TEXT NOT NULL,
     zip_code TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS available_slots (
+CREATE TABLE available_slots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     mechanic_id INTEGER NOT NULL,
     date TEXT NOT NULL,          -- ISO format: YYYY-MM-DD
@@ -17,7 +21,7 @@ CREATE TABLE IF NOT EXISTS available_slots (
     FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)
 );
 
-CREATE TABLE IF NOT EXISTS bookings (
+CREATE TABLE bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     booking_id TEXT UNIQUE NOT NULL,  -- UUID for customer reference
     customer_phone TEXT NOT NULL,
