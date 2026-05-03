@@ -27,6 +27,7 @@ let ws = null;
 let mediaRecorder = null;
 let audioContext = null;
 let isRecording = false;
+let isSpeaking = false;  // Prevents sending audio during TTS
 let audioQueue = [];
 let isPlayingAudio = false;
 
@@ -190,7 +191,7 @@ async function startRecording() {
     });
 
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      if (event.data.size > 0 && ws && ws.readyState === WebSocket.OPEN && !isSpeaking) {
         ws.send(event.data);
       }
     };
@@ -271,20 +272,17 @@ async function playNextChunk() {
 
 // ── Browser TTS ──
 
-let isMicPaused = false;
-
 function pauseMicForTTS() {
-  // Mute the mic stream tracks to prevent feedback loop
+  isSpeaking = true;
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = false));
-    isMicPaused = true;
   }
 }
 
 function resumeMicAfterTTS() {
-  if (mediaRecorder && mediaRecorder.stream && isMicPaused) {
+  isSpeaking = false;
+  if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = true));
-    isMicPaused = false;
   }
 }
 

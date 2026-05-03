@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from server.graph.builder import graph
 from server.stt import DeepgramSTT
-from server.tts import stream_speech
 
 load_dotenv()
 
@@ -90,13 +89,7 @@ async def websocket_endpoint(ws: WebSocket):
             print(f"[Main] LLM reply: '{reply[:100]}...'")
             await ws.send_json({"type": "assistant_text", "text": reply})
 
-            print("[Main] Starting TTS...")
-            try:
-                async for audio_chunk in stream_speech(reply):
-                    await ws.send_bytes(audio_chunk)
-            except Exception as tts_err:
-                print(f"[Main] TTS failed (client will use browser TTS): {tts_err}")
-
+            # Browser TTS handles speech on the client side
             await ws.send_json({"type": "audio_end"})
             print("[Main] Audio sent to client")
 
