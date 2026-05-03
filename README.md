@@ -186,11 +186,11 @@ uvicorn server.main:app --reload
 
 | Zip Code | City | Mechanics |
 |----------|------|-----------|
-| 98101 | Seattle, WA (Downtown) | Mike Torres (General Repair), Sarah Chen (Electrical) |
-| 98109 | Seattle, WA (South Lake Union) | David Kim (Battery & Electrical) |
-| 98122 | Seattle, WA (Capitol Hill) | Lisa Park (Tires & Brakes) |
-| 90210 | Beverly Hills, CA | James Okafor (Engine), Priya Patel (Tires) |
-| 73301 | Austin, TX | Carlos Rivera (General Repair) |
+| 98101 | Seattle, WA (Downtown) | Mike Torres, Sarah Chen |
+| 98109 | Seattle, WA (South Lake Union) | David Kim |
+| 98122 | Seattle, WA (Capitol Hill) | Lisa Park |
+| 90210 | Beverly Hills, CA | James Okafor, Priya Patel |
+| 73301 | Austin, TX | Carlos Rivera |
 
 ## Evaluation
 

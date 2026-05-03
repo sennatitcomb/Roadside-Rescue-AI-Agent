@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS mechanics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     phone TEXT NOT NULL,
-    specialty TEXT NOT NULL,
     zip_code TEXT NOT NULL
 );
 

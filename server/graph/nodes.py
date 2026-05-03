@@ -29,7 +29,7 @@ async def verify_vehicle(make: str, model: str, year: int) -> dict:
 @tool
 def get_available_slots(zip_code: str) -> list[dict]:
     """Get available mechanic appointment slots near a zip code.
-    Returns list of {slot_id, mechanic_name, specialty, date, time, zip_code}."""
+    Returns list of {slot_id, mechanic_name, date, time, zip_code}."""
     print(f"[Tool] get_available_slots({zip_code})")
     result = _get_available_slots(zip_code)
     print(f"[Tool] get_available_slots returned {len(result)} slots")

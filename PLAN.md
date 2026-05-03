@@ -183,7 +183,7 @@ The agent node drives the entire conversation. It decides when to call tools and
 
 ### `get_available_slots(zip_code: str) → list[dict]`
 - Queries SQLite `available_slots` table
-- Returns list of `{slot_id, mechanic_name, specialty, date, time, zip_code}`
+- Returns list of `{slot_id, mechanic_name, date, time, zip_code}`
 - **Limited to 3 results** (soonest first) to keep voice responses concise
 - Slot IDs are available to the LLM for booking but hidden from the user
 
@@ -242,15 +242,15 @@ The agent node drives the entire conversation. It decides when to call tools and
 
 ## 7. Database Coverage
 
-| Zip Code | City | Mechanic | Specialty |
-|----------|------|----------|-----------|
-| 98101 | Seattle, WA (Downtown) | Mike Torres | General Repair |
-| 98101 | Seattle, WA (Downtown) | Sarah Chen | Electrical |
-| 98109 | Seattle, WA (South Lake Union) | David Kim | Battery & Electrical |
-| 98122 | Seattle, WA (Capitol Hill) | Lisa Park | Tires & Brakes |
-| 90210 | Beverly Hills, CA | James Okafor | Engine & Transmission |
-| 90210 | Beverly Hills, CA | Priya Patel | Tires & Brakes |
-| 73301 | Austin, TX | Carlos Rivera | General Repair |
+| Zip Code | City | Mechanic |
+|----------|------|----------|
+| 98101 | Seattle, WA (Downtown) | Mike Torres |
+| 98101 | Seattle, WA (Downtown) | Sarah Chen |
+| 98109 | Seattle, WA (South Lake Union) | David Kim |
+| 98122 | Seattle, WA (Capitol Hill) | Lisa Park |
+| 90210 | Beverly Hills, CA | James Okafor |
+| 90210 | Beverly Hills, CA | Priya Patel |
+| 73301 | Austin, TX | Carlos Rivera |
 
 Each mechanic has 4 time slots generated over the next 24 hours from seed time.
 

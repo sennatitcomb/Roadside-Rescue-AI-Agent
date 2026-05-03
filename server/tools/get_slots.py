@@ -14,7 +14,6 @@ def get_available_slots(zip_code: str) -> list[dict]:
         SELECT
             s.id AS slot_id,
             m.name AS mechanic_name,
-            m.specialty,
             s.date,
             s.time,
             s.zip_code

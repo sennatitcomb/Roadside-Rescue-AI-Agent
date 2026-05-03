@@ -8,13 +8,13 @@ DB_PATH = Path(__file__).resolve().parent.parent.parent / "roadside_rescue.db"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 MECHANICS = [
-    ("Mike Torres", "206-555-0101", "General Repair", "98101"),
-    ("Sarah Chen", "206-555-0102", "Electrical", "98101"),
-    ("Lisa Park", "206-555-0103", "Tires & Brakes", "98122"),
-    ("James Okafor", "310-555-0201", "Engine & Transmission", "90210"),
-    ("Priya Patel", "310-555-0202", "Tires & Brakes", "90210"),
-    ("Carlos Rivera", "512-555-0301", "General Repair", "73301"),
-    ("David Kim", "206-555-0104", "Battery & Electrical", "98109"),
+    ("Mike Torres", "206-555-0101", "98101"),
+    ("Sarah Chen", "206-555-0102", "98101"),
+    ("Lisa Park", "206-555-0103", "98122"),
+    ("James Okafor", "310-555-0201", "90210"),
+    ("Priya Patel", "310-555-0202", "90210"),
+    ("Carlos Rivera", "512-555-0301", "73301"),
+    ("David Kim", "206-555-0104", "98109"),
 ]
 
 ZIP_CODES = ["98101", "98101", "98122", "90210", "90210", "73301", "98109"]
@@ -34,7 +34,7 @@ def seed(db_path: Path = DB_PATH) -> None:
 
     # Insert mechanics
     cursor.executemany(
-        "INSERT INTO mechanics (name, phone, specialty, zip_code) VALUES (?, ?, ?, ?)",
+        "INSERT INTO mechanics (name, phone, zip_code) VALUES (?, ?, ?)",
         MECHANICS,
     )
 
