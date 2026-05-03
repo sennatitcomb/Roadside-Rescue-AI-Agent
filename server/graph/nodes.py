@@ -70,7 +70,7 @@ print(
 )
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-2.5-flash-preview-04-17",
     google_api_key=_api_key,
     temperature=0,
 )
