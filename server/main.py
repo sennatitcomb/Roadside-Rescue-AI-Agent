@@ -44,6 +44,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     # Accumulate final transcript segments until utterance ends
     transcript_buffer: list[str] = []
+    stt: DeepgramSTT | None = None
 
     async def on_transcript(text: str, is_final: bool):
         """Forward transcript to client; buffer finals for LLM processing."""
@@ -68,21 +69,17 @@ async def websocket_endpoint(ws: WebSocket):
         await ws.send_json({"type": "utterance_end", "text": full_text})
 
         try:
-            # Invoke LangGraph with the user's utterance
             result = await graph.ainvoke(
                 {"messages": [HumanMessage(content=full_text)]},
                 config={"configurable": {"thread_id": session_id}},
             )
 
-            # Extract the last AI response
             reply = result["messages"][-1].content
             await ws.send_json({"type": "assistant_text", "text": reply})
 
-            # Stream TTS audio back to client
             async for audio_chunk in stream_speech(reply):
                 await ws.send_bytes(audio_chunk)
 
-            # Signal audio stream complete
             await ws.send_json({"type": "audio_end"})
 
         except Exception as e:
@@ -95,38 +92,47 @@ async def websocket_endpoint(ws: WebSocket):
                 }
             )
 
-    # Start Deepgram STT
-    stt = None
-    try:
-        stt = DeepgramSTT(
-            on_transcript=on_transcript, on_utterance_end=on_utterance_end
-        )
-        started = await stt.start()
-        if not started:
+    async def ensure_stt_started() -> DeepgramSTT | None:
+        """Lazily start Deepgram STT on first audio chunk."""
+        nonlocal stt
+        if stt is not None:
+            return stt
+        try:
+            stt = DeepgramSTT(
+                on_transcript=on_transcript, on_utterance_end=on_utterance_end
+            )
+            started = await stt.start()
+            if not started:
+                print("[STT] Deepgram start() returned False")
+                await ws.send_json(
+                    {
+                        "type": "error",
+                        "message": "Failed to connect to speech recognition",
+                    }
+                )
+                stt = None
+            return stt
+        except Exception as e:
+            print(f"[STT Error] {e}")
+            traceback.print_exc()
             await ws.send_json(
                 {
                     "type": "error",
-                    "message": "Failed to connect to speech recognition service",
+                    "message": f"Speech recognition error: {str(e)}",
                 }
             )
-            print("[STT] Deepgram start() returned False")
-    except Exception as e:
-        print(f"[STT Error] Failed to start Deepgram: {e}")
-        traceback.print_exc()
-        await ws.send_json(
-            {
-                "type": "error",
-                "message": f"Speech recognition error: {str(e)}",
-            }
-        )
+            stt = None
+            return None
 
     try:
         while True:
             data = await ws.receive()
 
             if "bytes" in data:
-                if stt:
-                    await stt.send(data["bytes"])
+                # Start STT lazily on first audio chunk
+                active_stt = await ensure_stt_started()
+                if active_stt:
+                    await active_stt.send(data["bytes"])
 
             elif "text" in data:
                 message = json.loads(data["text"])
@@ -135,6 +141,6 @@ async def websocket_endpoint(ws: WebSocket):
                 if msg_type == "ping":
                     await ws.send_json({"type": "pong"})
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         if stt:
             await stt.finish()
