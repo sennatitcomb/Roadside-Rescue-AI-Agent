@@ -32,6 +32,7 @@ let map = null;
 let mapMarker = null;
 let pendingAddress = null; // Stored from GPS, shown only after agent confirms
 let pendingLocationMsg = null; // Queued location message if WS not open yet
+let locationRejected = false; // True if user said "no" to GPS confirmation
 
 // ── WebSocket ──
 
@@ -149,6 +150,14 @@ function setStatus(text) {
 }
 
 function parseUserTranscript(text) {
+  const lower = text.toLowerCase().trim();
+
+  // Detect user rejecting the GPS location ("no", "no actually", "not quite", etc.)
+  if (statusLocation.textContent === "Confirming..." && lower.match(/^no\b|^not\b|^actually\b|^nope\b/)) {
+    locationRejected = true;
+    pendingAddress = null;
+  }
+
   // Detect when user corrects their location by mentioning a zip code
   const zipMatch = text.match(/\b(\d{5})\b/);
   if (zipMatch) {
@@ -169,11 +178,10 @@ function parseUserTranscript(text) {
 
     // Use whichever side has the street name
     const addressPart = beforePart || afterPart;
-    if (addressPart) {
-      const geocodeQuery = `${addressPart}, ${zip}`;
-      pendingAddress = null;
-      forwardGeocode(geocodeQuery);
-    }
+    const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
+    pendingAddress = null;
+    locationRejected = false;
+    forwardGeocode(geocodeQuery);
   }
 
   // Detect phone number (10 digits, with or without formatting)
@@ -210,14 +218,14 @@ function parseAssistantResponse(text) {
   }
 
   // ── Location handling ──
-  // Step 1: If agent is ASKING for confirmation ("is that right?"), stay pending
-  if (lower.match(/is that (?:right|correct)|(?:sound|that) right\??|correct\?/)) {
-    return;
-  }
-
-  // Step 2: If status is "Confirming..." and agent acknowledges without repeating zip
-  // (user said "yes" and agent moved on), confirm with the pending GPS address
-  if (statusLocation.textContent === "Confirming..." && pendingAddress) {
+  // Only handle the GPS confirmation flow here.
+  // All location UPDATES come from parseUserTranscript — the user is the source of truth.
+  if (statusLocation.textContent === "Confirming..." && pendingAddress && !locationRejected) {
+    // If agent is asking for confirmation, stay pending
+    if (lower.match(/is that (?:right|correct)|(?:sound|that) right\??|correct\?/)) {
+      return;
+    }
+    // If agent acknowledges (user said "yes"), confirm with the GPS address
     const acknowledged = lower.match(/(?:great|got it|perfect|alright|okay|noted|thanks|excellent|wonderful|good)/);
     if (acknowledged) {
       const { road, city, zip } = pendingAddress;
@@ -226,28 +234,6 @@ function parseAssistantResponse(text) {
       pendingAddress = null;
     }
   }
-
-  // Step 3: Look for a zip code — but SKIP if agent is discussing slots/availability
-  if (lower.match(/(?:slot|available|appointment|mechanic|book|no (?:available|slots))/)) {
-    return;
-  }
-
-  const zipMatch = text.match(/\b(\d{5})\b/);
-  if (!zipMatch) return;
-
-  const zip = zipMatch[1];
-
-  // Extract address text near the zip code (everything before the zip in the same sentence)
-  const sentenceWithZip = text.split(/[.!]/).find((s) => s.includes(zip)) || "";
-  const beforeZip = sentenceWithZip.substring(0, sentenceWithZip.indexOf(zip)).trim();
-  const addrMatch = beforeZip.match(/(?:to|at|near|on)\s+(.+?)(?:,\s*)?$/i);
-  const addressPart = addrMatch ? addrMatch[1].trim() : "";
-
-  // Build query for geocoding: address + zip
-  const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
-
-  // Forward geocode to validate and update map + status
-  forwardGeocode(geocodeQuery);
 }
 
 function forwardGeocode(query) {
