@@ -22,6 +22,7 @@ def get_available_slots(zip_code: str) -> list[dict]:
         JOIN mechanics m ON s.mechanic_id = m.id
         WHERE s.zip_code = ? AND s.is_booked = 0
         ORDER BY s.date, s.time
+        LIMIT 3
         """,
         (zip_code,),
     )
