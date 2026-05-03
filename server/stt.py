@@ -58,9 +58,7 @@ class DeepgramSTT:
             model="nova-2",
             language="en-US",
             smart_format=True,
-            encoding="opus",  # Browser MediaRecorder sends webm/opus
-            channels=1,
-            sample_rate=16000,
+            # Don't specify encoding — let Deepgram auto-detect from WebM container
             interim_results=True,
             utterance_end_ms="1000",
             vad_events=True,
