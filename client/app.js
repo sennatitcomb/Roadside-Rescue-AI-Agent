@@ -173,15 +173,22 @@ function parseAssistantResponse(text) {
     return;
   }
 
-  // Location confirmed by user — agent proceeds (no correction detected)
-  // If the agent mentions the location positively without asking, it's confirmed
-  const confirmedMatch = lower.match(/(?:got it|perfect|great|alright|okay|noted|confirmed)/) &&
-    statusLocation.textContent === "Confirming...";
-  if (confirmedMatch && pendingAddress) {
-    const { road, city, zip } = pendingAddress;
-    const display = [road, city, zip].filter(Boolean).join(", ");
-    statusLocation.textContent = display || pendingAddress.formatted;
-    return;
+  // Location confirmed by user — agent proceeds with acknowledgment
+  // Match phrases like "Got it, you're at..." or "Great, so you're near..."
+  if (statusLocation.textContent === "Confirming..." && pendingAddress) {
+    const confirmedWithLocation = lower.match(
+      /(?:got it|perfect|great|alright|noted|confirmed|okay).*(?:you're|you are|near|at|on|location)/
+    );
+    // Also match when agent simply moves on after the user confirmed (e.g. "Great. Now, what's your vehicle...")
+    const confirmedAndMovedOn = lower.match(
+      /(?:got it|perfect|great|alright|noted|confirmed).*(?:vehicle|car|what'?s your|tell me)/
+    );
+    if (confirmedWithLocation || confirmedAndMovedOn) {
+      const { road, city, zip } = pendingAddress;
+      const display = [road, city, zip].filter(Boolean).join(", ");
+      statusLocation.textContent = display || pendingAddress.formatted;
+      return;
+    }
   }
 
   // Location correction — agent acknowledges a new location from the user

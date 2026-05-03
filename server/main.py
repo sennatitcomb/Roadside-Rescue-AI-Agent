@@ -8,7 +8,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from server.graph.builder import graph
 from server.stt import DeepgramSTT
 
@@ -67,24 +67,35 @@ async def websocket_endpoint(ws: WebSocket):
         full_text = " ".join(transcript_buffer)
         transcript_buffer.clear()
 
-        # Prepend GPS location context to the first utterance
+        print(f"[Main] Utterance complete: '{full_text}'")
+        await ws.send_json({"type": "utterance_end", "text": full_text})
+
+        # Build messages for this turn
+        messages = []
+
+        # Inject GPS location as a SystemMessage on the first utterance
         if session_state["location"] and not session_state["location_injected"]:
             session_state["location_injected"] = True
             addr = session_state["location"].get("address", "unknown")
             zip_code = session_state["location"].get("zip", "unknown")
-            full_text = (
-                f"[System: The driver's GPS shows they are at {addr}, "
-                f"zip code {zip_code}. Confirm this location with the driver "
-                f"before asking about their vehicle.] {full_text}"
+            messages.append(
+                SystemMessage(
+                    content=(
+                        f"GPS DATA: The driver's GPS shows they are at {addr}, "
+                        f"zip code {zip_code}. You MUST confirm this location "
+                        f"with the driver BEFORE asking about their vehicle. "
+                        f"For example: 'I see you're near {addr}, {zip_code}. "
+                        f"Is that right?'"
+                    )
+                )
             )
 
-        print(f"[Main] Utterance complete: '{full_text}'")
-        await ws.send_json({"type": "utterance_end", "text": full_text})
+        messages.append(HumanMessage(content=full_text))
 
         try:
             print("[Main] Invoking LangGraph...")
             result = await graph.ainvoke(
-                {"messages": [HumanMessage(content=full_text)]},
+                {"messages": messages},
                 config={"configurable": {"thread_id": session_id}},
             )
 
