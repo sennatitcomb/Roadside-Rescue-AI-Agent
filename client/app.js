@@ -149,6 +149,30 @@ function setStatus(text) {
   statusState.textContent = text;
 }
 
+// Shared vehicle detection — handles various STT output formats
+function detectVehicle(text) {
+  const STOP_WORDS = /^(at|on|in|the|to|is|a|an|and|or|for|may|june|july|august)$/i;
+
+  // Normalize separators: "03/2023" → "03 2023", "model 3, 2023" → "model 3 2023"
+  const normalized = text.replace(/[/,]/g, " ").replace(/\s+/g, " ");
+
+  // Year-first: "2023 Tesla Model 3"
+  const yearFirst = normalized.match(/\b(\d{4})\s+([\w-]+)\s+((?:Model\s+)?[\w-]+)/i);
+  if (yearFirst && parseInt(yearFirst[1]) >= 1990 && parseInt(yearFirst[1]) <= 2030
+      && !STOP_WORDS.test(yearFirst[2])) {
+    return `${yearFirst[1]} ${yearFirst[2]} ${yearFirst[3]}`;
+  }
+
+  // Year-last: "Tesla Model 3 2023" or "Tesla model 03 2023"
+  const yearLast = normalized.match(/([\w-]+)\s+((?:Model\s+)?[\w-]+)\s+\(?(\d{4})\)?/i);
+  if (yearLast && parseInt(yearLast[3]) >= 1990 && parseInt(yearLast[3]) <= 2030
+      && !STOP_WORDS.test(yearLast[1])) {
+    return `${yearLast[3]} ${yearLast[1]} ${yearLast[2]}`;
+  }
+
+  return null;
+}
+
 function parseUserTranscript(text) {
   const lower = text.toLowerCase().trim();
 
@@ -190,24 +214,21 @@ function parseUserTranscript(text) {
     const digits = phoneMatch[0].replace(/\D/g, "");
     statusPhone.textContent = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
+
+  // Detect vehicle from user speech (e.g. "Tesla model 03/2023")
+  const vehicle = detectVehicle(text);
+  if (vehicle) {
+    statusVehicle.textContent = vehicle;
+  }
 }
 
 function parseAssistantResponse(text) {
   const lower = text.toLowerCase();
 
-  // Vehicle detection — match both "2023 Tesla Model 3" and "Tesla Model 3 (2023)"
-  // Exclude date-like matches (year followed by "at", "on", "in", etc.)
-  const STOP_WORDS = /^(at|on|in|the|to|is|a|an|and|or|for|may|june|july|august)$/i;
-
-  const yearFirstMatch = text.match(/\b(\d{4})\s+([\w-]+)\s+((?:Model\s+)?[\w-]+)/i);
-  const yearLastMatch = text.match(/([\w-]+)\s+((?:Model\s+)?[\w-]+)\s+\(?(\d{4})\)?/i);
-
-  if (yearFirstMatch && parseInt(yearFirstMatch[1]) >= 1990 && parseInt(yearFirstMatch[1]) <= 2030
-      && !STOP_WORDS.test(yearFirstMatch[2])) {
-    statusVehicle.textContent = `${yearFirstMatch[1]} ${yearFirstMatch[2]} ${yearFirstMatch[3]}`;
-  } else if (yearLastMatch && parseInt(yearLastMatch[3]) >= 1990 && parseInt(yearLastMatch[3]) <= 2030
-      && !STOP_WORDS.test(yearLastMatch[1])) {
-    statusVehicle.textContent = `${yearLastMatch[3]} ${yearLastMatch[1]} ${yearLastMatch[2]}`;
+  // Vehicle detection via shared function
+  const vehicle = detectVehicle(text);
+  if (vehicle) {
+    statusVehicle.textContent = vehicle;
   }
 
   // Booking confirmation — match "confirmation code", "booking ID", "booking code", etc.
