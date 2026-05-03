@@ -28,19 +28,16 @@ class DeepgramSTT:
         utterance_cb = self._on_utterance_end
 
         async def _on_message(*args, **kwargs):
-            print(
-                f"[Deepgram] on_message fired, args={len(args)}, kwargs={list(kwargs.keys())}"
-            )
             try:
-                # The result object is typically the last positional arg
-                result = args[-1] if args else kwargs.get("result")
+                # SDK v3: result is passed as keyword argument
+                result = kwargs.get("result")
                 if result is None:
-                    print("[Deepgram] No result object found in callback")
+                    print("[Deepgram] No result in kwargs")
                     return
                 text = result.channel.alternatives[0].transcript
                 is_final = result.is_final
-                print(f"[Deepgram] Transcript: '{text}' (is_final={is_final})")
                 if text:
+                    print(f"[Deepgram] Transcript: '{text}' (is_final={is_final})")
                     await transcript_cb(text, is_final)
             except Exception as e:
                 print(f"[Deepgram] Transcript parse error: {e}")
