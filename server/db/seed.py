@@ -10,12 +10,13 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 MECHANICS = [
     ("Mike Torres", "206-555-0101", "General Repair", "98101"),
     ("Sarah Chen", "206-555-0102", "Electrical", "98101"),
+    ("Lisa Park", "206-555-0103", "Tires & Brakes", "98122"),
     ("James Okafor", "310-555-0201", "Engine & Transmission", "90210"),
     ("Priya Patel", "310-555-0202", "Tires & Brakes", "90210"),
     ("Carlos Rivera", "512-555-0301", "General Repair", "73301"),
 ]
 
-ZIP_CODES = ["98101", "98101", "90210", "90210", "73301"]
+ZIP_CODES = ["98101", "98101", "98122", "90210", "90210", "73301"]
 
 
 def seed(db_path: Path = DB_PATH) -> None:
