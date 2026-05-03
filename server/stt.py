@@ -85,6 +85,14 @@ class DeepgramSTT:
                 print(f"[Deepgram] Total audio sent: {self._audio_bytes_sent} bytes")
             await self._connection.send(audio_bytes)
 
+    async def keep_alive(self) -> None:
+        """Send keepalive to prevent Deepgram timeout during TTS playback."""
+        if self._connection:
+            try:
+                await self._connection.keep_alive()
+            except Exception as e:
+                print(f"[Deepgram] Keepalive error: {e}")
+
     async def finish(self) -> None:
         """Gracefully close the Deepgram connection."""
         if self._connection:

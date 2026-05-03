@@ -135,6 +135,17 @@ async def websocket_endpoint(ws: WebSocket):
             stt = None
             return None
 
+    keepalive_task = None
+
+    async def send_keepalives():
+        """Send periodic keepalive to Deepgram while TTS is playing."""
+        import asyncio
+
+        while True:
+            await asyncio.sleep(5)
+            if stt:
+                await stt.keep_alive()
+
     try:
         while True:
             data = await ws.receive()
@@ -151,7 +162,20 @@ async def websocket_endpoint(ws: WebSocket):
 
                 if msg_type == "ping":
                     await ws.send_json({"type": "pong"})
+                elif msg_type == "tts_playing":
+                    # Start sending keepalives to Deepgram
+                    import asyncio
+
+                    if keepalive_task is None or keepalive_task.done():
+                        keepalive_task = asyncio.create_task(send_keepalives())
+                elif msg_type == "tts_done":
+                    # Stop keepalives
+                    if keepalive_task and not keepalive_task.done():
+                        keepalive_task.cancel()
+                        keepalive_task = None
 
     except (WebSocketDisconnect, RuntimeError):
+        if keepalive_task and not keepalive_task.done():
+            keepalive_task.cancel()
         if stt:
             await stt.finish()

@@ -219,12 +219,20 @@ function pauseMicForTTS() {
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = false));
   }
+  // Tell server to keep Deepgram alive while we're speaking
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "tts_playing" }));
+  }
 }
 
 function resumeMicAfterTTS() {
   isSpeaking = false;
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = true));
+  }
+  // Tell server TTS is done, resume normal audio
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "tts_done" }));
   }
 }
 
