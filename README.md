@@ -83,6 +83,17 @@ User Corrects → Client forward geocodes new address
 | Storage | SQLite |
 | Evaluation | LangSmith |
 
+### Real Public API Integrations
+
+| API | What It Does | Auth |
+|-----|-------------|------|
+| [Deepgram](https://deepgram.com/) | Streaming speech-to-text (Nova-2 model) | API key (free $200 credit) |
+| [Google Gemini](https://ai.google.dev/) | LLM for conversation + tool calling (2.5 Flash) | API key (free tier) |
+| [NHTSA Vehicle API](https://vpic.nhtsa.dot.gov/api/) | Validates vehicle make/model/year combinations | None (free government API) |
+| [Nominatim / OpenStreetMap](https://nominatim.openstreetmap.org/) | Reverse + forward geocoding (GPS → address) | None (free, 1 req/sec policy) |
+| [OpenStreetMap Tiles](https://www.openstreetmap.org/) | Interactive map tiles via Leaflet.js | None (free, open data) |
+| [LangSmith](https://smith.langchain.com/) | LLM tracing and evaluation | API key (free tier) |
+
 ## Quick Start (Local Development)
 
 ```bash
