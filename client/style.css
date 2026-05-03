@@ -119,6 +119,36 @@ header h1 {
   color: var(--text-muted);
 }
 
+/* ── Map ── */
+.map-container {
+  height: 200px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+  border: 1px solid var(--surface-hover);
+}
+
+/* Dark theme overrides for Leaflet */
+.map-container .leaflet-tile-pane {
+  filter: brightness(0.8) contrast(1.1) saturate(0.8);
+}
+
+.map-container .leaflet-control-attribution {
+  background: var(--surface) !important;
+  color: var(--text-muted) !important;
+  font-size: 0.6rem;
+}
+
+.map-container .leaflet-control-attribution a {
+  color: var(--primary) !important;
+}
+
+.map-container .leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--surface-hover) !important;
+}
+
 /* ── Transcript ── */
 .transcript {
   background: var(--surface);

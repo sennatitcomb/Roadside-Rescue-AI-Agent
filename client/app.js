@@ -27,6 +27,10 @@ let ws = null;
 let mediaRecorder = null;
 let isRecording = false;
 let isSpeaking = false;  // Prevents sending audio during TTS
+let map = null;
+let mapMarker = null;
+let pendingAddress = null; // Stored from GPS, shown only after agent confirms
+let pendingLocationMsg = null; // Queued location message if WS not open yet
 
 // ── WebSocket ──
 
@@ -38,6 +42,11 @@ function connect() {
     connectionStatus.textContent = "Connected";
     connectionStatus.className = "connection-status connected";
     setStatus("Ready");
+    // Flush queued location if GPS resolved before WS connected
+    if (pendingLocationMsg) {
+      ws.send(JSON.stringify(pendingLocationMsg));
+      pendingLocationMsg = null;
+    }
   };
 
   ws.onclose = () => {
@@ -155,6 +164,58 @@ function parseAssistantResponse(text) {
     statusBooking.textContent = bookingMatch[1];
     setStatus("Booked!");
   }
+
+  // Location confirmation — agent asks "you're near X, is that right?"
+  // This means the agent is confirming the GPS location; keep status as "Confirming..."
+  const confirmingMatch = lower.match(/(?:you're near|i see you're|you're at|you're on|located at|location.*?is)\b/);
+  if (confirmingMatch && lower.match(/(?:is that right|right\??|correct|sound right)/)) {
+    // Agent is asking for confirmation — stay pending
+    return;
+  }
+
+  // Location confirmed by user — agent proceeds (no correction detected)
+  // If the agent mentions the location positively without asking, it's confirmed
+  const confirmedMatch = lower.match(/(?:got it|perfect|great|alright|okay|noted|confirmed)/) &&
+    statusLocation.textContent === "Confirming...";
+  if (confirmedMatch && pendingAddress) {
+    const { road, city, zip } = pendingAddress;
+    const display = [road, city, zip].filter(Boolean).join(", ");
+    statusLocation.textContent = display || pendingAddress.formatted;
+    return;
+  }
+
+  // Location correction — agent acknowledges a new location from the user
+  const locationMatch = text.match(/(?:you're (?:near|at|on)|located at|location.*?(?:is|updated to|changed to))\s+(.+?)(?:\.|,\s*(?:is that|right|correct)|$)/i);
+  if (locationMatch) {
+    const corrected = locationMatch[1].trim();
+    forwardGeocode(corrected);
+  }
+}
+
+function confirmLocation(address) {
+  // Called when agent confirms or user corrects — show formatted address
+  statusLocation.textContent = address;
+}
+
+function forwardGeocode(query) {
+  fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+    { headers: { "Accept-Language": "en" } }
+  )
+    .then((r) => r.json())
+    .then((results) => {
+      if (results.length > 0) {
+        const { lat, lon, display_name } = results[0];
+        updateMapLocation(parseFloat(lat), parseFloat(lon), display_name);
+        // Parse display_name into parts for formatted display
+        const parts = display_name.split(", ");
+        const formatted = parts.slice(0, 3).join(", ");
+        statusLocation.textContent = formatted || query;
+        // Update pending address so future confirmations use the corrected one
+        pendingAddress = null;
+      }
+    })
+    .catch(() => {});
 }
 
 // ── Audio capture ──
@@ -209,8 +270,6 @@ function stopRecording() {
   micLabel.textContent = "TAP TO TALK";
   setStatus("Ready");
 }
-
-// ── Geolocation ──
 
 // ── Browser TTS ──
 
@@ -292,12 +351,61 @@ function detectLocation() {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { latitude, longitude } = pos.coords;
-      statusLocation.textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      initMap(latitude, longitude);
+      reverseGeocode(latitude, longitude);
     },
     () => {
       statusLocation.textContent = "denied";
     }
   );
+}
+
+function initMap(lat, lon) {
+  map = L.map("map").setView([lat, lon], 15);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap",
+  }).addTo(map);
+  mapMarker = L.marker([lat, lon]).addTo(map).bindPopup("Your location").openPopup();
+}
+
+function reverseGeocode(lat, lon) {
+  fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    { headers: { "Accept-Language": "en" } }
+  )
+    .then((r) => r.json())
+    .then((data) => {
+      const addr = data.address || {};
+      const zip = addr.postcode || "";
+      const road = addr.road || "";
+      const city = addr.city || addr.town || addr.village || "";
+      const state = addr.state || "";
+      const parts = [road, city, state].filter(Boolean);
+      const formatted = parts.join(", ");
+
+      // Store address but show "Confirming..." until agent verifies
+      pendingAddress = { road, city, state, zip, formatted };
+      statusLocation.textContent = "Confirming...";
+
+      // Send location to server — queue if WS not open yet
+      const locationMsg = { type: "location", lat, lon, zip, address: formatted };
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(locationMsg));
+      } else {
+        pendingLocationMsg = locationMsg;
+      }
+    })
+    .catch(() => {
+      statusLocation.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    });
+}
+
+function updateMapLocation(lat, lon, label) {
+  if (!map) return;
+  map.setView([lat, lon], 15);
+  if (mapMarker) {
+    mapMarker.setLatLng([lat, lon]).setPopupContent(label).openPopup();
+  }
 }
 
 // ── Event listeners ──

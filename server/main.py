@@ -44,6 +44,8 @@ async def websocket_endpoint(ws: WebSocket):
     # Accumulate final transcript segments until utterance ends
     transcript_buffer: list[str] = []
     stt: DeepgramSTT | None = None
+    # GPS location data from client (mutable container for closure access)
+    session_state = {"location": None, "location_injected": False}
 
     async def on_transcript(text: str, is_final: bool):
         """Forward transcript to client; buffer finals for LLM processing."""
@@ -64,6 +66,17 @@ async def websocket_endpoint(ws: WebSocket):
 
         full_text = " ".join(transcript_buffer)
         transcript_buffer.clear()
+
+        # Prepend GPS location context to the first utterance
+        if session_state["location"] and not session_state["location_injected"]:
+            session_state["location_injected"] = True
+            addr = session_state["location"].get("address", "unknown")
+            zip_code = session_state["location"].get("zip", "unknown")
+            full_text = (
+                f"[System: The driver's GPS shows they are at {addr}, "
+                f"zip code {zip_code}. Confirm this location with the driver "
+                f"before asking about their vehicle.] {full_text}"
+            )
 
         print(f"[Main] Utterance complete: '{full_text}'")
         await ws.send_json({"type": "utterance_end", "text": full_text})
@@ -173,6 +186,19 @@ async def websocket_endpoint(ws: WebSocket):
                     if keepalive_task and not keepalive_task.done():
                         keepalive_task.cancel()
                         keepalive_task = None
+                elif msg_type == "location":
+                    # Store GPS location data from client
+                    session_state["location"] = {
+                        "lat": message.get("lat"),
+                        "lon": message.get("lon"),
+                        "zip": message.get("zip", ""),
+                        "address": message.get("address", ""),
+                    }
+                    print(
+                        f"[Main] Location received: "
+                        f"{session_state['location'].get('address')}, "
+                        f"zip {session_state['location'].get('zip')}"
+                    )
 
     except (WebSocketDisconnect, RuntimeError):
         if keepalive_task and not keepalive_task.done():
