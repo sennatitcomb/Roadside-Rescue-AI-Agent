@@ -74,6 +74,7 @@ function handleMessage(msg) {
     case "transcript":
       if (msg.is_final) {
         addTranscript("user", msg.text);
+        parseUserTranscript(msg.text);
       } else {
         showInterim(msg.text);
       }
@@ -144,6 +145,24 @@ function clearInterim() {
 
 function setStatus(text) {
   statusState.textContent = text;
+}
+
+function parseUserTranscript(text) {
+  // Detect when user corrects their location by mentioning a zip code
+  const zipMatch = text.match(/\b(\d{5})\b/);
+  if (!zipMatch) return;
+
+  const zip = zipMatch[1];
+
+  // Extract address text before the zip (e.g. "Dexter Avenue" from "I'm on Dexter Avenue 98101")
+  const beforeZip = text.substring(0, text.indexOf(zip)).trim();
+  const addrMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
+  const addressPart = addrMatch ? addrMatch[1].trim() : "";
+  const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
+
+  // Forward geocode the corrected location — update map pin and status
+  pendingAddress = null; // Clear old GPS address so acknowledgment doesn't use it
+  forwardGeocode(geocodeQuery);
 }
 
 function parseAssistantResponse(text) {
