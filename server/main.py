@@ -66,21 +66,26 @@ async def websocket_endpoint(ws: WebSocket):
         full_text = " ".join(transcript_buffer)
         transcript_buffer.clear()
 
+        print(f"[Main] Utterance complete: '{full_text}'")
         await ws.send_json({"type": "utterance_end", "text": full_text})
 
         try:
+            print("[Main] Invoking LangGraph...")
             result = await graph.ainvoke(
                 {"messages": [HumanMessage(content=full_text)]},
                 config={"configurable": {"thread_id": session_id}},
             )
 
             reply = result["messages"][-1].content
+            print(f"[Main] LLM reply: '{reply[:100]}...'")
             await ws.send_json({"type": "assistant_text", "text": reply})
 
+            print("[Main] Starting TTS...")
             async for audio_chunk in stream_speech(reply):
                 await ws.send_bytes(audio_chunk)
 
             await ws.send_json({"type": "audio_end"})
+            print("[Main] Audio sent to client")
 
         except Exception as e:
             print(f"[LangGraph/TTS Error] {e}")
