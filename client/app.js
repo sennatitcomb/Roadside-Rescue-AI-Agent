@@ -99,6 +99,13 @@ function handleMessage(msg) {
       setStatus(isRecording ? "Listening..." : "Ready");
       break;
 
+    case "error":
+      addTranscript("assistant", "Sorry, something went wrong. Please try again.");
+      micBtn.classList.remove("processing");
+      setStatus("Error");
+      console.error("Server error:", msg.message);
+      break;
+
     case "pong":
       break;
   }

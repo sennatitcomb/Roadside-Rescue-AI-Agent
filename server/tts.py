@@ -51,18 +51,19 @@ async def stream_speech(
     model_id: str = DEFAULT_MODEL_ID,
     output_format: str = DEFAULT_OUTPUT_FORMAT,
 ) -> AsyncIterator[bytes]:
-    """Yield audio chunks as they arrive from ElevenLabs (streaming)."""
+    """Yield audio chunks as they arrive from ElevenLabs."""
     print(f"[TTS] stream_speech: '{text[:80]}...'")
     client = _get_client()
     try:
-        audio_stream = await client.text_to_speech.convert_as_stream(
+        # SDK v2.x: convert() returns an async iterator of bytes chunks
+        response = await client.text_to_speech.convert(
             voice_id=voice_id,
             text=text,
             model_id=model_id,
             output_format=output_format,
         )
         total_bytes = 0
-        async for chunk in audio_stream:
+        async for chunk in response:
             if chunk:
                 total_bytes += len(chunk)
                 yield chunk

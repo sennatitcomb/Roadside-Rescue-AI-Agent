@@ -77,6 +77,10 @@ async def websocket_endpoint(ws: WebSocket):
             )
 
             reply = result["messages"][-1].content
+            # Gemini may return content as a list; ensure it's a string
+            if isinstance(reply, list):
+                reply = " ".join(str(part) for part in reply)
+            reply = str(reply)
             print(f"[Main] LLM reply: '{reply[:100]}...'")
             await ws.send_json({"type": "assistant_text", "text": reply})
 
