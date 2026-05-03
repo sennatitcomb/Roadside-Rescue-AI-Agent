@@ -91,7 +91,8 @@ function handleMessage(msg) {
       addTranscript("assistant", msg.text);
       setStatus("Speaking...");
       parseAssistantResponse(msg.text);
-      // Use browser TTS to speak the response
+      // Pause mic to prevent feedback loop, then speak
+      pauseMicForTTS();
       speakText(msg.text);
       break;
 
@@ -270,9 +271,27 @@ async function playNextChunk() {
 
 // ── Browser TTS ──
 
+let isMicPaused = false;
+
+function pauseMicForTTS() {
+  // Mute the mic stream tracks to prevent feedback loop
+  if (mediaRecorder && mediaRecorder.stream) {
+    mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = false));
+    isMicPaused = true;
+  }
+}
+
+function resumeMicAfterTTS() {
+  if (mediaRecorder && mediaRecorder.stream && isMicPaused) {
+    mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = true));
+    isMicPaused = false;
+  }
+}
+
 function speakText(text) {
   if (!("speechSynthesis" in window)) {
     console.warn("Browser TTS not supported");
+    resumeMicAfterTTS();
     micBtn.classList.remove("processing");
     setStatus(isRecording ? "Listening..." : "Ready");
     return;
@@ -293,11 +312,13 @@ function speakText(text) {
   if (preferred) utterance.voice = preferred;
 
   utterance.onend = () => {
+    resumeMicAfterTTS();
     micBtn.classList.remove("processing");
     setStatus(isRecording ? "Listening..." : "Ready");
   };
 
   utterance.onerror = () => {
+    resumeMicAfterTTS();
     micBtn.classList.remove("processing");
     setStatus(isRecording ? "Listening..." : "Ready");
   };
