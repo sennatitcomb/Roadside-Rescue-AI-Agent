@@ -157,8 +157,8 @@ function parseAssistantResponse(text) {
     statusVehicle.textContent = `${vehicleMatch[1]} ${vehicleMatch[2]} ${vehicleMatch[3]}`;
   }
 
-  // Booking confirmation
-  const bookingMatch = text.match(/confirmation\s+code\s+(?:is\s+)?(\w+)/i);
+  // Booking confirmation — match "confirmation code", "booking ID", "booking code", etc.
+  const bookingMatch = text.match(/(?:confirmation\s+code|booking\s+(?:id|code))\s+(?:is\s+)?(\w+)/i);
   if (bookingMatch) {
     statusBooking.textContent = bookingMatch[1];
     setStatus("Booked!");
@@ -170,7 +170,20 @@ function parseAssistantResponse(text) {
     return;
   }
 
-  // Step 2: Look for a zip code in the response — this signals a location mention
+  // Step 2: If status is "Confirming..." and agent acknowledges without repeating zip
+  // (user said "yes" and agent moved on), confirm with the pending GPS address
+  if (statusLocation.textContent === "Confirming..." && pendingAddress) {
+    const acknowledged = lower.match(/(?:great|got it|perfect|alright|okay|noted|thanks|excellent|wonderful|good)/);
+    if (acknowledged) {
+      const { road, city, zip } = pendingAddress;
+      const display = [road, city, zip].filter(Boolean).join(", ");
+      statusLocation.textContent = display || pendingAddress.formatted;
+      pendingAddress = null;
+      // Don't return — still check for zip in case agent also mentioned a new one
+    }
+  }
+
+  // Step 3: Look for a zip code in the response — this signals a location update
   const zipMatch = text.match(/\b(\d{5})\b/);
   if (!zipMatch) return;
 
@@ -178,9 +191,7 @@ function parseAssistantResponse(text) {
 
   // Extract address text near the zip code (everything before the zip in the same sentence)
   const sentenceWithZip = text.split(/[.!]/).find((s) => s.includes(zip)) || "";
-  // Pull out street/city/state tokens before the zip
   const beforeZip = sentenceWithZip.substring(0, sentenceWithZip.indexOf(zip)).trim();
-  // Take the last meaningful chunk (after "to", "at", "near", or from the start)
   const addrMatch = beforeZip.match(/(?:to|at|near|on)\s+(.+?)(?:,\s*)?$/i);
   const addressPart = addrMatch ? addrMatch[1].trim() : "";
 
