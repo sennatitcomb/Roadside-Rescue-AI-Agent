@@ -25,11 +25,8 @@ const connectionStatus = document.getElementById("connection-status");
 // ── State ──
 let ws = null;
 let mediaRecorder = null;
-let audioContext = null;
 let isRecording = false;
 let isSpeaking = false;  // Prevents sending audio during TTS
-let audioQueue = [];
-let isPlayingAudio = false;
 
 // ── WebSocket ──
 
@@ -57,16 +54,7 @@ function connect() {
   };
 
   ws.onmessage = (event) => {
-    if (event.data instanceof ArrayBuffer) {
-      // TTS audio chunk — queue for playback
-      audioQueue.push(event.data);
-      if (!isPlayingAudio) {
-        playNextChunk();
-      }
-      return;
-    }
-
-    // JSON message
+    // All messages are JSON text (no binary audio)
     const msg = JSON.parse(event.data);
     handleMessage(msg);
   };
@@ -222,53 +210,7 @@ function stopRecording() {
   setStatus("Ready");
 }
 
-// ── Audio playback (TTS) ──
-
-async function playNextChunk() {
-  if (audioQueue.length === 0) {
-    isPlayingAudio = false;
-    return;
-  }
-
-  isPlayingAudio = true;
-
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  // Collect all queued chunks into a single buffer for smoother playback
-  const chunks = audioQueue.splice(0, audioQueue.length);
-  const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    combined.set(new Uint8Array(chunk), offset);
-    offset += chunk.byteLength;
-  }
-
-  try {
-    const audioBuffer = await audioContext.decodeAudioData(combined.buffer);
-    const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioContext.destination);
-    source.onended = () => {
-      // Check if more chunks arrived while we were playing
-      if (audioQueue.length > 0) {
-        playNextChunk();
-      } else {
-        isPlayingAudio = false;
-      }
-    };
-    source.start();
-  } catch (err) {
-    console.warn("Audio decode error (partial chunk):", err);
-    isPlayingAudio = false;
-    // Try next chunk if available
-    if (audioQueue.length > 0) {
-      playNextChunk();
-    }
-  }
-}
+// ── Geolocation ──
 
 // ── Browser TTS ──
 

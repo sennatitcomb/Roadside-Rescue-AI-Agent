@@ -10,7 +10,5 @@ services:
         sync: false
       - key: DEEPGRAM_API_KEY
         sync: false
-      - key: ELEVENLABS_API_KEY
-        sync: false
       - key: ALLOWED_ORIGINS
         value: https://sennatitcomb.github.io

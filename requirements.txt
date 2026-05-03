@@ -4,6 +4,5 @@ websockets>=13.0
 langchain-google-genai>=2.0.0
 langgraph>=0.2.0
 deepgram-sdk>=3.5.0,<4.0.0
-elevenlabs>=1.5.0
 langsmith>=0.1.0
 python-dotenv>=1.0.0
