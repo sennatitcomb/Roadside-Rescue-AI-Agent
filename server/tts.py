@@ -34,7 +34,7 @@ async def synthesize_speech(
     """Generate full audio bytes from text (non-streaming)."""
     print(f"[TTS] synthesize_speech: '{text[:60]}...'")
     client = _get_client()
-    response = await client.text_to_speech.convert(
+    response = client.text_to_speech.convert(
         voice_id=voice_id,
         text=text,
         model_id=model_id,
@@ -55,8 +55,8 @@ async def stream_speech(
     print(f"[TTS] stream_speech: '{text[:80]}...'")
     client = _get_client()
     try:
-        # SDK v2.x: convert() returns an async iterator of bytes chunks
-        response = await client.text_to_speech.convert(
+        # SDK v2.x: convert() returns an async generator (no await)
+        response = client.text_to_speech.convert(
             voice_id=voice_id,
             text=text,
             model_id=model_id,
