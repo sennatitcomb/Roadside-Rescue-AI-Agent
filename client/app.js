@@ -61,6 +61,9 @@ function formatAgentText(text) {
   // Strip markdown bold (**text**) and italic (*text*) markers
   let out = text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1");
 
+  // Strip slot ID references users shouldn't see, e.g. " (Slot ID: 25)"
+  out = out.replace(/\s*\(Slot ID:\s*\d+\)/gi, "");
+
   // Reformat ISO-style dates: "2026-05-04 at 01:00 PM" → "May 4 at 1:00 PM"
   out = out.replace(
     /\d{4}-(\d{2})-(\d{2}) at (\d{2}):(\d{2}) (AM|PM)/g,
