@@ -3,69 +3,136 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Roadside Rescue</title>
+  <title>Roadside Assistance AI</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>ROADSIDE RESCUE</h1>
-      <p class="tagline">Tell me what happened and I'll get help on the way.</p>
-    </header>
+  <div class="app">
+    <div class="layout">
 
-    <main>
-      <!-- Big mic button -->
-      <button id="mic-btn" class="mic-button" aria-label="Tap to talk">
-        <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
-          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-        </svg>
-        <span class="mic-label">TAP TO TALK</span>
-      </button>
+      <!-- Header -->
+      <header class="header">
+        <div>
+          <h1 class="header-title">Roadside Assistance AI</h1>
+          <p class="header-subtitle">Emergency Support Dashboard</p>
+        </div>
+        <div class="agent-badge" id="agent-badge">
+          <span class="dot-wrapper">
+            <span class="dot-ping" id="dot-ping"></span>
+            <span class="dot" id="dot"></span>
+          </span>
+          <span class="agent-label" id="agent-label">Connecting...</span>
+        </div>
+      </header>
 
-      <!-- Map -->
-      <div id="map" class="map-container"></div>
+      <div class="grid">
 
-      <!-- Live transcript -->
-      <div id="transcript" class="transcript">
-        <p class="placeholder">Your conversation will appear here...</p>
+        <!-- Left Column — Map & Details -->
+        <div class="col-left">
+
+          <!-- Map Card -->
+          <section class="card">
+            <div class="card-head">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              <h2>Current Location</h2>
+            </div>
+            <div id="map" class="map-container"></div>
+          </section>
+
+          <!-- Incident Details Card -->
+          <section class="card">
+            <div class="card-head">
+              <h2>Incident Details</h2>
+            </div>
+            <div class="details">
+
+              <div class="detail-row">
+                <div class="detail-icon amber">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>
+                </div>
+                <div>
+                  <p class="detail-label">Booking ID</p>
+                  <p class="detail-value" id="detail-booking">&mdash;</p>
+                </div>
+              </div>
+
+              <div class="detail-row">
+                <div class="detail-icon rose">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div>
+                  <p class="detail-label">Location</p>
+                  <p class="detail-value" id="detail-location">Detecting...</p>
+                </div>
+              </div>
+
+              <div class="detail-row">
+                <div class="detail-icon blue">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                </div>
+                <div>
+                  <p class="detail-label">Vehicle</p>
+                  <p class="detail-value" id="detail-vehicle">&mdash;</p>
+                </div>
+              </div>
+
+              <div class="detail-row">
+                <div class="detail-icon emerald">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </div>
+                <div>
+                  <p class="detail-label">Contact</p>
+                  <p class="detail-value" id="detail-phone">&mdash;</p>
+                </div>
+              </div>
+
+            </div>
+          </section>
+        </div>
+
+        <!-- Right Column — Conversation -->
+        <div class="col-right">
+          <section class="card chat-card">
+
+            <div class="card-head chat-head">
+              <h2>Live Conversation</h2>
+              <div class="chat-badge">
+                <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                <span>AI Voice Agent Active</span>
+              </div>
+            </div>
+
+            <!-- Messages -->
+            <div id="conversation" class="conversation">
+              <p class="placeholder">Your conversation will appear here&hellip;</p>
+            </div>
+
+            <!-- Voice Control -->
+            <div class="voice-bar">
+              <button id="mic-btn" class="mic-btn" aria-label="Tap to speak">
+                <!-- Mic on (default) -->
+                <svg id="mic-icon-on" class="mic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                <!-- Mic off (recording) -->
+                <svg id="mic-icon-off" class="mic-svg hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5.17"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                <!-- Ping ring (recording) -->
+                <span class="mic-ping" id="mic-ping"></span>
+              </button>
+              <p class="mic-label" id="mic-label">Tap to speak</p>
+            </div>
+
+          </section>
+        </div>
+
       </div>
 
-      <!-- Status card -->
-      <div class="status-card">
-        <div class="status-row">
-          <span class="status-icon">📍</span>
-          <span class="status-label">Location:</span>
-          <span id="status-location" class="status-value">detecting...</span>
-        </div>
-        <div class="status-row">
-          <span class="status-icon">🚗</span>
-          <span class="status-label">Vehicle:</span>
-          <span id="status-vehicle" class="status-value">—</span>
-        </div>
-        <div class="status-row">
-          <span class="status-icon">🔧</span>
-          <span class="status-label">Status:</span>
-          <span id="status-state" class="status-value">Ready</span>
-        </div>
-        <div class="status-row">
-          <span class="status-icon">📞</span>
-          <span class="status-label">Phone:</span>
-          <span id="status-phone" class="status-value">—</span>
-        </div>
-        <div class="status-row">
-          <span class="status-icon">🎫</span>
-          <span class="status-label">Booking:</span>
-          <span id="status-booking" class="status-value">—</span>
-        </div>
-      </div>
-    </main>
+      <!-- Footer -->
+      <footer class="footer">
+        <p class="conn-status" id="connection-status">Disconnected</p>
+      </footer>
 
-    <footer>
-      <p class="connection-status" id="connection-status">Disconnected</p>
-    </footer>
+    </div>
   </div>
 
   <script src="app.js"></script>

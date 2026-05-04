@@ -1,38 +1,84 @@
 /**
- * Roadside Rescue — WebSocket voice client
+ * Roadside Assistance AI — WebSocket voice client
  *
  * Captures mic audio via MediaRecorder, sends to backend over WebSocket,
  * receives transcripts + TTS audio, plays audio via AudioContext.
  */
 
 // ── Configuration ──
-// In production, point this to your Render URL
 const WS_URL =
   location.hostname === "localhost" || location.hostname === "127.0.0.1"
     ? "ws://localhost:8000/ws"
     : "wss://roadside-rescue-ai-agent.onrender.com/ws";
 
+// ── SVG icon templates for chat avatars ──
+const USER_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+const BOT_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>';
+
 // ── DOM elements ──
 const micBtn = document.getElementById("mic-btn");
-const micLabel = micBtn.querySelector(".mic-label");
-const transcriptEl = document.getElementById("transcript");
-const statusLocation = document.getElementById("status-location");
-const statusVehicle = document.getElementById("status-vehicle");
-const statusState = document.getElementById("status-state");
-const statusPhone = document.getElementById("status-phone");
-const statusBooking = document.getElementById("status-booking");
+const micLabel = document.getElementById("mic-label");
+const micIconOn = document.getElementById("mic-icon-on");
+const micIconOff = document.getElementById("mic-icon-off");
+const conversationEl = document.getElementById("conversation");
+const detailLocation = document.getElementById("detail-location");
+const detailVehicle = document.getElementById("detail-vehicle");
+const detailPhone = document.getElementById("detail-phone");
+const detailBooking = document.getElementById("detail-booking");
 const connectionStatus = document.getElementById("connection-status");
+const agentDot = document.getElementById("dot");
+const agentDotPing = document.getElementById("dot-ping");
+const agentLabel = document.getElementById("agent-label");
 
 // ── State ──
 let ws = null;
 let mediaRecorder = null;
 let isRecording = false;
-let isSpeaking = false;  // Prevents sending audio during TTS
+let isSpeaking = false;
 let map = null;
 let mapMarker = null;
-let pendingAddress = null; // Stored from GPS, shown only after agent confirms
-let pendingLocationMsg = null; // Queued location message if WS not open yet
-let locationRejected = false; // True if user said "no" to GPS confirmation
+let pendingAddress = null;
+let pendingLocationMsg = null;
+let locationRejected = false;
+
+// ── Helpers ──
+
+function escapeHtml(text) {
+  const el = document.createElement("span");
+  el.textContent = text;
+  return el.innerHTML;
+}
+
+function setAgentStatus(status) {
+  agentDot.className = "dot " + status;
+  agentDotPing.className = status === "online" ? "dot-ping active" : "dot-ping";
+  const labels = { online: "Agent online", offline: "Agent offline", error: "Connection error" };
+  agentLabel.textContent = labels[status] || status;
+}
+
+function setStatus(text) {
+  const labels = {
+    Ready: "Tap to speak",
+    "Listening...": "Listening...",
+    "Thinking...": "Processing...",
+    "Speaking...": "Agent speaking...",
+    Disconnected: "Reconnecting...",
+    "Not connected": "Not connected",
+    "Mic access denied": "Microphone access denied",
+    "Booked!": "Booking confirmed!",
+    Error: "Error — tap to retry",
+  };
+  micLabel.textContent = labels[text] || text;
+
+  if (text === "Listening...") {
+    micLabel.classList.add("listening");
+  } else {
+    micLabel.classList.remove("listening");
+  }
+}
 
 // ── WebSocket ──
 
@@ -42,9 +88,9 @@ function connect() {
 
   ws.onopen = () => {
     connectionStatus.textContent = "Connected";
-    connectionStatus.className = "connection-status connected";
+    connectionStatus.className = "conn-status connected";
+    setAgentStatus("online");
     setStatus("Ready");
-    // Flush queued location if GPS resolved before WS connected
     if (pendingLocationMsg) {
       ws.send(JSON.stringify(pendingLocationMsg));
       pendingLocationMsg = null;
@@ -53,19 +99,19 @@ function connect() {
 
   ws.onclose = () => {
     connectionStatus.textContent = "Disconnected";
-    connectionStatus.className = "connection-status disconnected";
+    connectionStatus.className = "conn-status disconnected";
+    setAgentStatus("offline");
     setStatus("Disconnected");
-    // Reconnect after 3s
     setTimeout(connect, 3000);
   };
 
   ws.onerror = () => {
     connectionStatus.textContent = "Connection error";
-    connectionStatus.className = "connection-status disconnected";
+    connectionStatus.className = "conn-status disconnected";
+    setAgentStatus("error");
   };
 
   ws.onmessage = (event) => {
-    // All messages are JSON text (no binary audio)
     const msg = JSON.parse(event.data);
     handleMessage(msg);
   };
@@ -86,22 +132,23 @@ function handleMessage(msg) {
       clearInterim();
       setStatus("Thinking...");
       micBtn.classList.add("processing");
+      showThinkingIndicator();
       break;
 
     case "assistant_text":
+      hideThinkingIndicator();
       addTranscript("assistant", msg.text);
       setStatus("Speaking...");
       parseAssistantResponse(msg.text);
-      // Pause mic to prevent feedback loop, then speak
       pauseMicForTTS();
       speakText(msg.text);
       break;
 
     case "audio_end":
-      // Server signals processing complete
       break;
 
     case "error":
+      hideThinkingIndicator();
       addTranscript("assistant", "Sorry, something went wrong. Please try again.");
       micBtn.classList.remove("processing");
       setStatus("Error");
@@ -113,61 +160,106 @@ function handleMessage(msg) {
   }
 }
 
-// ── Transcript display ──
+// ── Conversation display ──
 
 function addTranscript(role, text) {
-  // Remove placeholder if present
-  const placeholder = transcriptEl.querySelector(".placeholder");
+  const placeholder = conversationEl.querySelector(".placeholder");
   if (placeholder) placeholder.remove();
 
-  const p = document.createElement("p");
-  p.className = role === "user" ? "user-msg" : "assistant-msg";
-  p.textContent = text;
-  transcriptEl.appendChild(p);
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  hideThinkingIndicator();
+
+  const group = document.createElement("div");
+  group.className = "message-group " + (role === "user" ? "user" : "agent");
+
+  const avatarClass = role === "user" ? "user-avatar" : "agent-avatar";
+  const avatarIcon = role === "user" ? USER_ICON : BOT_ICON;
+  const bubbleClass = role === "user" ? "user-bubble" : "agent-bubble";
+  const sideClass = role === "user" ? "user-side" : "agent-side";
+  const now = new Date();
+  const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  group.innerHTML =
+    '<div class="avatar ' + avatarClass + '">' + avatarIcon + "</div>" +
+    '<div class="message-content ' + sideClass + '">' +
+      '<div class="bubble ' + bubbleClass + '"><p>' + escapeHtml(text) + "</p></div>" +
+      '<span class="timestamp">' + time + "</span>" +
+    "</div>";
+
+  conversationEl.appendChild(group);
+  conversationEl.scrollTop = conversationEl.scrollHeight;
 }
 
 function showInterim(text) {
-  let interim = transcriptEl.querySelector(".interim");
+  let interim = conversationEl.querySelector(".interim-group");
   if (!interim) {
-    interim = document.createElement("p");
-    interim.className = "interim";
-    transcriptEl.appendChild(interim);
+    const placeholder = conversationEl.querySelector(".placeholder");
+    if (placeholder) placeholder.remove();
+
+    interim = document.createElement("div");
+    interim.className = "message-group user interim-group";
+    interim.innerHTML =
+      '<div class="avatar user-avatar">' + USER_ICON + "</div>" +
+      '<div class="message-content user-side">' +
+        '<div class="bubble user-bubble interim-bubble"><p class="interim-text"></p></div>' +
+      "</div>";
+    conversationEl.appendChild(interim);
   }
-  interim.textContent = text;
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  interim.querySelector(".interim-text").textContent = text;
+  conversationEl.scrollTop = conversationEl.scrollHeight;
 }
 
 function clearInterim() {
-  const interim = transcriptEl.querySelector(".interim");
+  const interim = conversationEl.querySelector(".interim-group");
   if (interim) interim.remove();
+}
+
+function showThinkingIndicator() {
+  hideThinkingIndicator();
+  const group = document.createElement("div");
+  group.className = "message-group agent";
+  group.id = "thinking-indicator";
+  group.innerHTML =
+    '<div class="avatar agent-avatar">' + BOT_ICON + "</div>" +
+    '<div class="message-content agent-side">' +
+      '<div class="bubble agent-bubble thinking-bubble">' +
+        '<span class="thinking-dot" style="animation-delay:0ms"></span>' +
+        '<span class="thinking-dot" style="animation-delay:150ms"></span>' +
+        '<span class="thinking-dot" style="animation-delay:300ms"></span>' +
+      "</div>" +
+    "</div>";
+  conversationEl.appendChild(group);
+  conversationEl.scrollTop = conversationEl.scrollHeight;
+}
+
+function hideThinkingIndicator() {
+  const el = document.getElementById("thinking-indicator");
+  if (el) el.remove();
 }
 
 // ── Status card updates ──
 
-function setStatus(text) {
-  statusState.textContent = text;
-}
-
-// Shared vehicle detection — handles various STT output formats
 function detectVehicle(text) {
   const STOP_WORDS = /^(at|on|in|the|to|is|a|an|and|or|for|may|june|july|august)$/i;
-
-  // Normalize separators: "03/2023" → "03 2023", "model 3, 2023" → "model 3 2023"
   const normalized = text.replace(/[/,]/g, " ").replace(/\s+/g, " ");
 
-  // Year-first: "2023 Tesla Model 3"
   const yearFirst = normalized.match(/\b(\d{4})\s+([\w-]+)\s+((?:Model\s+)?[\w-]+)/i);
-  if (yearFirst && parseInt(yearFirst[1]) >= 1990 && parseInt(yearFirst[1]) <= 2030
-      && !STOP_WORDS.test(yearFirst[2])) {
-    return `${yearFirst[1]} ${yearFirst[2]} ${yearFirst[3]}`;
+  if (
+    yearFirst &&
+    parseInt(yearFirst[1]) >= 1990 &&
+    parseInt(yearFirst[1]) <= 2030 &&
+    !STOP_WORDS.test(yearFirst[2])
+  ) {
+    return yearFirst[1] + " " + yearFirst[2] + " " + yearFirst[3];
   }
 
-  // Year-last: "Tesla Model 3 2023" or "Tesla model 03 2023"
   const yearLast = normalized.match(/([\w-]+)\s+((?:Model\s+)?[\w-]+)\s+\(?(\d{4})\)?/i);
-  if (yearLast && parseInt(yearLast[3]) >= 1990 && parseInt(yearLast[3]) <= 2030
-      && !STOP_WORDS.test(yearLast[1])) {
-    return `${yearLast[3]} ${yearLast[1]} ${yearLast[2]}`;
+  if (
+    yearLast &&
+    parseInt(yearLast[3]) >= 1990 &&
+    parseInt(yearLast[3]) <= 2030 &&
+    !STOP_WORDS.test(yearLast[1])
+  ) {
+    return yearLast[3] + " " + yearLast[1] + " " + yearLast[2];
   }
 
   return null;
@@ -176,91 +268,90 @@ function detectVehicle(text) {
 function parseUserTranscript(text) {
   const lower = text.toLowerCase().trim();
 
-  // Detect user rejecting the GPS location ("no", "no actually", "not quite", etc.)
-  if (statusLocation.textContent === "Confirming..." && lower.match(/^no\b|^not\b|^actually\b|^nope\b/)) {
+  if (
+    detailLocation.textContent === "Confirming..." &&
+    lower.match(/^no\b|^not\b|^actually\b|^nope\b/)
+  ) {
     locationRejected = true;
     pendingAddress = null;
   }
 
-  // Detect when user corrects their location by mentioning a zip code
   const zipMatch = text.match(/\b(\d{5})\b/);
   if (zipMatch) {
     const zip = zipMatch[1];
     const zipIndex = text.indexOf(zip);
 
-    // Extract address from BEFORE the zip ("on Dexter Avenue 98101")
     const beforeZip = text.substring(0, zipIndex).trim();
     const beforeMatch = beforeZip.match(/(?:on|at|near)\s+(.+?)(?:,\s*)?$/i);
     let beforePart = beforeMatch ? beforeMatch[1].trim() : "";
-    // Strip trailing prepositions ("Dexter Avenue North at" → "Dexter Avenue North")
     beforePart = beforePart.replace(/\s+(?:at|on|near|in)$/i, "");
 
-    // Extract address from AFTER the zip ("98109 Dexter Avenue North")
     const afterZip = text.substring(zipIndex + 5).trim();
     const afterMatch = afterZip.match(/^,?\s*(?:on|at|near)?\s*([\w\s]+?)(?:\.|,|$)/i);
     const afterPart = afterMatch ? afterMatch[1].trim() : "";
 
-    // Use whichever side has the street name
     const addressPart = beforePart || afterPart;
-    const geocodeQuery = addressPart ? `${addressPart}, ${zip}` : zip;
+    const geocodeQuery = addressPart ? addressPart + ", " + zip : zip;
     pendingAddress = null;
     locationRejected = false;
     forwardGeocode(geocodeQuery);
   }
 
-  // Detect phone number (10 digits, with or without formatting)
   const phoneMatch = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
   if (phoneMatch) {
     const digits = phoneMatch[0].replace(/\D/g, "");
-    statusPhone.textContent = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    detailPhone.textContent =
+      "(" + digits.slice(0, 3) + ") " + digits.slice(3, 6) + "-" + digits.slice(6);
   }
 
-  // Detect vehicle from user speech (e.g. "Tesla model 03/2023")
   const vehicle = detectVehicle(text);
   if (vehicle) {
-    statusVehicle.textContent = vehicle;
+    detailVehicle.textContent = vehicle;
   }
 }
 
 function parseAssistantResponse(text) {
   const lower = text.toLowerCase();
 
-  // Vehicle detection via shared function
   const vehicle = detectVehicle(text);
   if (vehicle) {
-    statusVehicle.textContent = vehicle;
+    detailVehicle.textContent = vehicle;
   }
 
-  // Booking confirmation — match "confirmation code", "booking ID", "booking code", etc.
-  const bookingMatch = text.match(/(?:confirmation\s+code|booking\s+(?:id|code))\s+(?:is\s+)?(\w+)/i);
+  const bookingMatch = text.match(
+    /(?:confirmation\s+code|booking\s+(?:id|code))\s+(?:is\s+)?(\w+)/i
+  );
   if (bookingMatch) {
-    statusBooking.textContent = bookingMatch[1];
+    detailBooking.textContent = bookingMatch[1];
     setStatus("Booked!");
   }
 
-  // ── Location handling ──
-  // Only handle the GPS confirmation flow here.
-  // All location UPDATES come from parseUserTranscript — the user is the source of truth.
-  if (statusLocation.textContent === "Confirming..." && pendingAddress && !locationRejected) {
-    // If agent is asking for confirmation, stay pending
+  if (
+    detailLocation.textContent === "Confirming..." &&
+    pendingAddress &&
+    !locationRejected
+  ) {
     if (lower.match(/is that (?:right|correct)|(?:sound|that) right\??|correct\?/)) {
       return;
     }
-    // If agent acknowledges (user said "yes"), confirm with the GPS address
-    const acknowledged = lower.match(/(?:great|got it|perfect|alright|okay|noted|thanks|excellent|wonderful|good)/);
+    const acknowledged = lower.match(
+      /(?:great|got it|perfect|alright|okay|noted|thanks|excellent|wonderful|good)/
+    );
     if (acknowledged) {
       const { road, city, zip } = pendingAddress;
       const display = [road, city, zip].filter(Boolean).join(", ");
-      statusLocation.textContent = display || pendingAddress.formatted;
+      detailLocation.textContent = display || pendingAddress.formatted;
       pendingAddress = null;
     }
   }
 }
 
 function forwardGeocode(query) {
-  statusLocation.textContent = "Updating...";
+  detailLocation.textContent = "Updating...";
   fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=us&addressdetails=1`,
+    "https://nominatim.openstreetmap.org/search?q=" +
+      encodeURIComponent(query) +
+      "&format=json&limit=1&countrycodes=us&addressdetails=1",
     { headers: { "Accept-Language": "en" } }
   )
     .then((r) => r.json())
@@ -268,19 +359,18 @@ function forwardGeocode(query) {
       if (results.length > 0) {
         const { lat, lon, display_name, address } = results[0];
         updateMapLocation(parseFloat(lat), parseFloat(lon), display_name);
-        // Use structured address fields instead of parsing display_name
         const road = address?.road || "";
         const city = address?.city || address?.town || address?.village || "";
         const zip = address?.postcode || "";
         const formatted = [road, city, zip].filter(Boolean).join(", ");
-        statusLocation.textContent = formatted || query;
+        detailLocation.textContent = formatted || query;
         pendingAddress = null;
       } else {
-        statusLocation.textContent = query;
+        detailLocation.textContent = query;
       }
     })
     .catch(() => {
-      statusLocation.textContent = query;
+      detailLocation.textContent = query;
     });
 }
 
@@ -289,21 +379,14 @@ function forwardGeocode(query) {
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-      },
+      audio: { channelCount: 1, sampleRate: 16000 },
     });
 
-    // Use webm/opus — Deepgram supports it natively
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
 
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType,
-      audioBitsPerSecond: 16000,
-    });
+    mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0 && ws && ws.readyState === WebSocket.OPEN && !isSpeaking) {
@@ -311,12 +394,12 @@ async function startRecording() {
       }
     };
 
-    // Send chunks every 250ms for low latency
     mediaRecorder.start(250);
 
     isRecording = true;
     micBtn.classList.add("recording");
-    micLabel.textContent = "LISTENING...";
+    micIconOn.classList.add("hidden");
+    micIconOff.classList.remove("hidden");
     setStatus("Listening...");
   } catch (err) {
     console.error("Microphone access denied:", err);
@@ -333,7 +416,8 @@ function stopRecording() {
 
   isRecording = false;
   micBtn.classList.remove("recording");
-  micLabel.textContent = "TAP TO TALK";
+  micIconOn.classList.remove("hidden");
+  micIconOff.classList.add("hidden");
   setStatus("Ready");
 }
 
@@ -344,7 +428,6 @@ function pauseMicForTTS() {
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = false));
   }
-  // Tell server to keep Deepgram alive while we're speaking
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "tts_playing" }));
   }
@@ -355,7 +438,6 @@ function resumeMicAfterTTS() {
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getAudioTracks().forEach((t) => (t.enabled = true));
   }
-  // Tell server TTS is done, resume normal audio
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "tts_done" }));
   }
@@ -370,14 +452,12 @@ function speakText(text) {
     return;
   }
 
-  // Cancel any ongoing speech
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 1.0;
   utterance.pitch = 1.0;
 
-  // Pick a natural-sounding voice if available
   const voices = window.speechSynthesis.getVoices();
   const preferred = voices.find(
     (v) => v.name.includes("Samantha") || v.name.includes("Google") || v.lang === "en-US"
@@ -399,7 +479,6 @@ function speakText(text) {
   window.speechSynthesis.speak(utterance);
 }
 
-// Load voices (some browsers load them async)
 if ("speechSynthesis" in window) {
   window.speechSynthesis.onvoiceschanged = () => {
     window.speechSynthesis.getVoices();
@@ -410,7 +489,7 @@ if ("speechSynthesis" in window) {
 
 function detectLocation() {
   if (!navigator.geolocation) {
-    statusLocation.textContent = "unavailable";
+    detailLocation.textContent = "Unavailable";
     return;
   }
 
@@ -421,7 +500,7 @@ function detectLocation() {
       reverseGeocode(latitude, longitude);
     },
     () => {
-      statusLocation.textContent = "denied";
+      detailLocation.textContent = "Denied";
     }
   );
 }
@@ -436,7 +515,7 @@ function initMap(lat, lon) {
 
 function reverseGeocode(lat, lon) {
   fetch(
-    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    "https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json",
     { headers: { "Accept-Language": "en" } }
   )
     .then((r) => r.json())
@@ -449,11 +528,9 @@ function reverseGeocode(lat, lon) {
       const parts = [road, city, state].filter(Boolean);
       const formatted = parts.join(", ");
 
-      // Store address but show "Confirming..." until agent verifies
       pendingAddress = { road, city, state, zip, formatted };
-      statusLocation.textContent = "Confirming...";
+      detailLocation.textContent = "Confirming...";
 
-      // Send location to server — queue if WS not open yet
       const locationMsg = { type: "location", lat, lon, zip, address: formatted };
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(locationMsg));
@@ -462,7 +539,7 @@ function reverseGeocode(lat, lon) {
       }
     })
     .catch(() => {
-      statusLocation.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      detailLocation.textContent = lat.toFixed(4) + ", " + lon.toFixed(4);
     });
 }
 
