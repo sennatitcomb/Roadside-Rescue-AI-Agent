@@ -52,6 +52,29 @@ function escapeHtml(text) {
   return el.innerHTML;
 }
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December"
+];
+
+function formatAgentText(text) {
+  // Strip markdown bold (**text**) and italic (*text*) markers
+  let out = text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1");
+
+  // Reformat ISO-style dates: "2026-05-04 at 01:00 PM" → "May 4 at 1:00 PM"
+  out = out.replace(
+    /\d{4}-(\d{2})-(\d{2}) at (\d{2}):(\d{2}) (AM|PM)/g,
+    (_, mo, day, hr, min, ampm) => {
+      const month = MONTHS[parseInt(mo, 10) - 1];
+      const dayNum = parseInt(day, 10);
+      const hrNum = parseInt(hr, 10);
+      return `${month} ${dayNum} at ${hrNum}:${min} ${ampm}`;
+    }
+  );
+
+  return out;
+}
+
 function setAgentStatus(status) {
   agentDot.className = "dot " + status;
   agentDotPing.className = status === "online" ? "dot-ping active" : "dot-ping";
@@ -177,11 +200,12 @@ function addTranscript(role, text) {
   const sideClass = role === "user" ? "user-side" : "agent-side";
   const now = new Date();
   const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const displayText = role === "user" ? escapeHtml(text) : escapeHtml(formatAgentText(text));
 
   group.innerHTML =
     '<div class="avatar ' + avatarClass + '">' + avatarIcon + "</div>" +
     '<div class="message-content ' + sideClass + '">' +
-      '<div class="bubble ' + bubbleClass + '"><p>' + escapeHtml(text) + "</p></div>" +
+      '<div class="bubble ' + bubbleClass + '"><p>' + displayText + "</p></div>" +
       '<span class="timestamp">' + time + "</span>" +
     "</div>";
 
