@@ -1,0 +1,74 @@
+# Manually start (resume) the Render web service and wait until /health responds.
+#
+# Requires repository secrets:
+#   RENDER_API_KEY     — Render dashboard → Account → API Keys (Bearer token)
+#   RENDER_SERVICE_ID  — Service → Settings → General → Service ID
+#
+# Optional:
+#   RENDER_HEALTH_URL  — Full URL to health check (default: production /health)
+#
+# Notes:
+# - POST /resume wakes a service you previously suspended via the API or dashboard.
+# - Free-tier services also "spin down" when idle; they wake on HTTP traffic. This
+#   workflow always polls /health so it covers both suspended and cold-start cases.
+
+name: Render — Start service
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::error::Add repository secrets RENDER_API_KEY and RENDER_SERVICE_ID."
+            exit 1
+          fi
+
+      - name: Resume service (Render API)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          set +e
+          HTTP=$(curl -sS -o /tmp/render_resume_body.json -w "%{http_code}" \
+            -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/resume" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Accept: application/json")
+          set -e
+          cat /tmp/render_resume_body.json || true
+          echo ""
+          echo "HTTP status: $HTTP"
+          if [ "$HTTP" = "202" ] || [ "$HTTP" = "200" ]; then
+            echo "Resume request accepted."
+          elif [ "$HTTP" = "400" ] || [ "$HTTP" = "409" ]; then
+            echo "Resume not applied (service may already be running or not suspended). Continuing to health check…"
+          else
+            echo "::warning::Unexpected resume response; still trying health check…"
+          fi
+
+      - name: Wait until /health is OK
+        env:
+          RENDER_HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL }}
+        run: |
+          URL="${RENDER_HEALTH_URL:-https://roadside-rescue-ai-agent.onrender.com/health}"
+          echo "Polling: $URL"
+          for i in $(seq 1 36); do
+            echo "Attempt $i / 36…"
+            if curl -sf --max-time 45 "$URL"; then
+              echo "Service responded OK."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for health endpoint."
+          exit 1

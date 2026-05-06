@@ -123,6 +123,27 @@ uvicorn server.main:app --reload
 - **Backend** → Connect repo to [Render](https://render.com) free tier, set env vars (`GOOGLE_API_KEY`, `DEEPGRAM_API_KEY`)
 - **Live demo**: [sennatitcomb.github.io/Roadside-Rescue-AI-Agent/](https://sennatitcomb.github.io/Roadside-Rescue-AI-Agent/)
 
+### Start / stop backend from GitHub Actions
+
+Manual workflows call the [Render API](https://api-docs.render.com/reference/introduction) so you can resume a suspended service or suspend it when you do not need it:
+
+| Workflow | What it does |
+|----------|----------------|
+| **Render — Start service** (`.github/workflows/render-start.yml`) | `POST /v1/services/{id}/resume`, then polls `/health` until the app responds (covers API resume + free-tier cold spin-up). |
+| **Render — Suspend service** (`.github/workflows/render-stop.yml`) | `POST /v1/services/{id}/suspend` |
+
+Run them from **GitHub → Actions →** choose the workflow → **Run workflow**.
+
+**Repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|--------|-------------|
+| `RENDER_API_KEY` | Render **Account** → **API Keys** — use as `Bearer` token |
+| `RENDER_SERVICE_ID` | Your web service → **Settings** → **Service ID** |
+| `RENDER_HEALTH_URL` | *Optional.* Full health URL; defaults to `https://roadside-rescue-ai-agent.onrender.com/health` |
+
+Suspend/resume availability depends on your Render plan. If suspend returns **403**, check Render’s docs for your service tier; the **start** workflow still helps wake an idle free-tier instance by polling `/health`.
+
 ## Project Structure
 
 ```
@@ -131,7 +152,9 @@ uvicorn server.main:app --reload
 ├── render.yaml                 # Render deployment config
 │
 ├── .github/workflows/
-│   └── deploy-pages.yml        # GitHub Actions → deploys client/ to Pages
+│   ├── deploy-pages.yml        # GitHub Actions → deploys client/ to Pages
+│   ├── render-start.yml        # Manual: resume Render service + health poll
+│   └── render-stop.yml         # Manual: suspend Render service
 │
 ├── server/                     # BACKEND (Render free tier)
 │   ├── main.py                 # FastAPI + WebSocket server + GPS injection

@@ -1,0 +1,49 @@
+# Manually suspend the Render web service (stops billing compute; wakes only via resume or dashboard).
+#
+# Requires repository secrets:
+#   RENDER_API_KEY     — Render dashboard → Account → API Keys
+#   RENDER_SERVICE_ID  — Service → Settings → General → Service ID
+#
+# Note: Suspend availability depends on your Render plan and service type. If the API
+# returns 403, check Render docs for your account tier.
+
+name: Render — Suspend service
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::error::Add repository secrets RENDER_API_KEY and RENDER_SERVICE_ID."
+            exit 1
+          fi
+
+      - name: Suspend service (Render API)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          HTTP=$(curl -sS -o /tmp/render_suspend_body.json -w "%{http_code}" \
+            -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/suspend" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Accept: application/json")
+          cat /tmp/render_suspend_body.json || true
+          echo ""
+          echo "HTTP status: $HTTP"
+          if [ "$HTTP" = "202" ] || [ "$HTTP" = "200" ]; then
+            echo "Suspend request accepted."
+          else
+            echo "::error::Suspend failed. Check API key, service ID, and plan permissions."
+            exit 1
+          fi
