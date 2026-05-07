@@ -95,6 +95,7 @@ function setStatus(text) {
     "Not connected": "Not connected",
     "Mic access denied": "Microphone access denied",
     "Booked!": "Booking confirmed!",
+    "Transferring...": "Transferring to a human...",
     Error: "Error — tap to retry",
   };
   micLabel.textContent = labels[text] || text;
@@ -171,6 +172,14 @@ function handleMessage(msg) {
       break;
 
     case "audio_end":
+      break;
+
+    case "transfer_to_human":
+      hideThinkingIndicator();
+      addTranscript("assistant", msg.text);
+      setStatus("Transferring...");
+      micBtn.classList.remove("processing");
+      speakText(msg.text);
       break;
 
     case "error":

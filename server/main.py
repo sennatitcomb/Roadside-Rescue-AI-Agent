@@ -10,6 +10,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
 from server.graph.builder import graph
+from server.preprocessing.anger_detector import is_angry_user, TRANSFER_MESSAGE
 from server.stt import DeepgramSTT
 
 load_dotenv()
@@ -69,6 +70,13 @@ async def websocket_endpoint(ws: WebSocket):
 
         print(f"[Main] Utterance complete: '{full_text}'")
         await ws.send_json({"type": "utterance_end", "text": full_text})
+
+        # ── Pre-processing gate: anger / human-transfer detection (~0 ms) ──
+        if is_angry_user(full_text):
+            print("[Main] Anger detected — routing to human dispatcher")
+            await ws.send_json({"type": "transfer_to_human", "text": TRANSFER_MESSAGE})
+            return  # skip LangGraph entirely
+        # ───────────────────────────────────────────────────────────────────
 
         # Build messages for this turn
         messages = []
